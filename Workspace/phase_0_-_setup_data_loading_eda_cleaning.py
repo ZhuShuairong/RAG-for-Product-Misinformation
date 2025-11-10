@@ -1,5 +1,7 @@
 # Phase 0 - Setup, Data Loading, EDA, and Cleaning
+# 第 0 阶段 - 设置、数据加载、EDA 和清理
 # This phase handles the initial setup by installing required packages, downloading the dataset from Kaggle, performing exploratory data analysis (EDA), cleaning and imputing missing values in the product and review datasets, and verifying the cleaned data structures.
+# 此阶段负责初始设置，包括安装所需软件包、从 Kaggle 下载数据集、执行探索性数据分析 (EDA)、清理产品和评论数据集并填补缺失值，以及验证清理后的数据结构。
 
 import subprocess
 import os
@@ -7,15 +9,15 @@ from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
 
-# Install required packages
+# Install required packages  # 安装所需的包
 subprocess.check_call(["pip", "install", "chromadb", "sentence-transformers", "torch", "kaggle", "datasets", "python-dotenv"])
 
-# Setup Kaggle API and download dataset
-# Check if dataset already exists
+# Setup Kaggle API and download dataset  # 设置Kaggle API并下载数据集
+# Check if dataset already exists  # 检查数据集是否已存在
 expected_files = [
     'product_info.csv',
     'reviews_0-250.csv',
-    'reviews_250-500.csv', 
+    'reviews_250-500.csv',
     'reviews_500-750.csv',
     'reviews_750-1250.csv',
     'reviews_1250-end.csv'
@@ -27,15 +29,17 @@ else:
     # Download dataset
     load_dotenv()
     from kaggle.api.kaggle_api_extended import KaggleApi
+
     api = KaggleApi()
     api.authenticate()
     api.dataset_download_files('nadyinky/sephora-products-and-skincare-reviews', path='./data/sephora_data', unzip=True)
     print("Dataset downloaded successfully!")
 
-# Import libraries and load data
-from transformers import EarlyStoppingCallback
+# Import libraries and load data  # 导入库并加载数据
+from transformers import EarlyStoppingCallback  # Example import, may not be used in this phase
 
-# Initial Exploratory Data Analysis (EDA)
+
+# Initial Exploratory Data Analysis (EDA)  # 初步探索性数据分析（EDA）
 def initial_eda(df, name):
     eda_summary = pd.DataFrame({
         'Column': df.columns,
@@ -47,7 +51,8 @@ def initial_eda(df, name):
     print(eda_summary.to_string(index=False))
     print(f"Shape: {df.shape[0]} rows × {df.shape[1]} columns\n")
 
-# Ensure data is loaded as DataFrame
+
+# Ensure data is loaded as DataFrame  # 确保数据已加载为DataFrame
 try:
     product_info_loaded = isinstance(product_info, pd.DataFrame)
 except NameError:
@@ -85,7 +90,7 @@ if isinstance(product_info, pd.DataFrame) and len(product_info) > 0:
 else:
     print("Cannot show describe() - product_info not loaded as DataFrame")
 
-# Product Information Data Cleaning
+# Product Information Data Cleaning  # 产品信息数据清理
 product_info_clean = product_info.copy()
 fill_dict = {
     'rating': product_info_clean['rating'].median(),
@@ -107,7 +112,7 @@ product_info_clean['sale_price_usd'] = product_info_clean['sale_price_usd'].fill
 
 print("Product info cleaned, nulls:", product_info_clean.isnull().sum().sum())
 
-# Product Reviews Data Cleaning
+# Product Reviews Data Cleaning  # 产品评论数据清理
 reviews_clean = reviews.copy()
 reviews_clean = reviews_clean.drop('Unnamed: 0', axis=1)
 fill_dict_reviews = {
@@ -123,11 +128,11 @@ fill_dict_reviews = {
 reviews_clean = reviews_clean.fillna(fill_dict_reviews)
 print("Reviews cleaned, nulls:", reviews_clean.isnull().sum().sum())
 
-# Final Data Verification and Summary
+# Final Data Verification and Summary  # 最终数据验证和摘要
 print("Product Info columns:", len(product_info.columns))
 print("Reviews columns:", len(reviews.columns))
 
-# Check columns in the datasets
+# Check columns in the datasets  # 检查数据集中的列
 print("Product Info columns:")
 print(product_info.columns.tolist())
 print(f"\nProduct Info shape: {product_info.shape}")
@@ -143,3 +148,4 @@ print("\nReviews Clean columns:")
 print(reviews_clean.columns.tolist())
 
 # Dependencies: This phase creates cleaned dataframes product_info_clean and reviews_clean in memory. No files saved.
+# 依赖关系：此阶段在内存中创建了清理后的数据框product_info_clean和reviews_clean。未保存文件。

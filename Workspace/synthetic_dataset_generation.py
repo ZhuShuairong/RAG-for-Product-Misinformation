@@ -5,18 +5,18 @@ from tqdm import tqdm
 import json
 import numpy as np
 
-# Load the product data
+# Load the product data  # 加载产品数据
 df = pd.read_csv('data/sephora_data/product_info.csv')
 
-# Compute probabilities based on reviews column (linear normalization)
+# Compute probabilities based on reviews column (linear normalization)  # 根据评论列计算概率（线性归一化）
 reviews_col = df['reviews'].values.astype(float)
 reviews_col = np.nan_to_num(reviews_col, nan=0.0)  # Replace NaN with 0
 probabilities = reviews_col / np.sum(reviews_col)
-# If all zero, make uniform
+# If all zero, make uniform  # 如果全为零，则均匀分布
 if np.sum(probabilities) == 0:
     probabilities = np.ones(len(df)) / len(df)
 
-# Define 10 different prompts for generating negative reviews with misinformation
+# Define 10 different prompts for generating negative reviews with misinformation  # 定义10个不同的提示，用于生成带有错误信息的负面评论
 prompts = [
     """
 You are a 45-year-old suburban mother, health-conscious, researches everything. Proper grammar, worried tone.
@@ -259,24 +259,24 @@ Snobby luxury comparison tone | LENGTH: 70-110 words
 """
 ]
 
-# Initialize the LLM
+# Initialize the LLM  # 初始化LLM
 llm = Ollama(model="gemma3:4b", temperature=0.9, top_p=0.95, top_k=0)
 
-# List to store generated reviews
+# List to store generated reviews  # 存储生成的评论的列表
 reviews = []
 
-# Generate reviews for each product (limit to first 10 for testing)
+# Generate reviews for each product (limit to first 10 for testing)  # 为每个产品生成评论（测试时限制为前10个）
 pbar = tqdm(range(1000), desc="Generating reviews", total=1000)
 last_review = ""
 for _ in pbar:
-    # Sample a product index based on probabilities
+    # Sample a product index based on probabilities  # 根据概率采样产品索引
     idx = np.random.choice(len(df), p=probabilities)
     row = df.iloc[idx]
     
-    # Randomly select a prompt
+    # Randomly select a prompt  # 随机选择一个提示
     prompt_template = random.choice(prompts)
     
-    # Fill the prompt with product info
+    # Fill the prompt with product info  # 使用产品信息填写提示
     prompt = prompt_template.format(
         product_name=row['product_name'],
         variation_value=row.get('variation_value', ''),
@@ -287,31 +287,31 @@ for _ in pbar:
         tertiary_category=row.get('tertiary_category', '')
     )
     
-    # Generate the review
+    # Generate the review  # 生成评论
     response = llm.invoke(prompt)
     review_text = response.strip()
-    # Clean the review text: remove tabs, newlines, quotes, and extra whitespace
+    # Clean the review text: remove tabs, newlines, quotes, and extra whitespace  # 清理评论文本：删除制表符、换行符、引号和多余的空格
     review_text = ' '.join(review_text.split())  # Remove tabs, newlines, and multiple spaces
     review_text = review_text.replace('"', '').replace("'", '')  # Remove quotation marks
     last_review = review_text
     
-    # Assign a low rating (1 or 2)
+    # Assign a low rating (1 or 2)  # 分配低评分（1或2）
     rating = random.choice([1, 2])
     
-    # Append to list
+    # Append to list  # 添加到列表中
     reviews.append({
         'product_id': row['product_id'],
         'review': review_text,
         'rating': rating
     })
     
-    # Update progress bar with last review snippet
+    # Update progress bar with last review snippet  # 使用最后的评论片段更新进度条
     pbar.set_postfix({
         "Product": f"{row['product_name']} ({row.get('variation_value', 'N/A')})",
         "Last review": review_text[:50] + "..." if len(review_text) > 50 else review_text
     })
 
-# Save the reviews to a JSON file
+# Save the reviews to a JSON file  # 将评论保存到JSON文件中
 with open('Workspace/fake_reviews.json', 'w') as f:
     json.dump(reviews, f, indent=4)
 print("Saved fake reviews to Workspace/fake_reviews.json")
