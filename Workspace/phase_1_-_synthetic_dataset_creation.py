@@ -1,253 +1,401 @@
-# Phase 1 - Synthetic Dataset Creation for Fake Review Detection
-# This phase creates synthetic datasets for training a fake review detection model. It merges cleaned reviews with product information, generates fake reviews by shuffling real review texts, combines real and fake data, and splits into training and testing sets with stratification to ensure balanced labels.
-# Depends on cleaned dataframes product_info_clean and reviews_clean from phase 0.
-
+# -*- coding: utf-8 -*-
 import pandas as pd
+import random
+from langchain_community.llms import Ollama
+from tqdm import tqdm
+import json
 import numpy as np
-from sklearn.model_selection import train_test_split
 
-# Enhanced Synthetic Data Generation Function (Safer & Faster)
-def generate_synthetic_fakes_with_product_swap(merged_df, fake_ratio=0.2, max_rows=None):
+
+# Load the product data
+csv_path = 'data/sephora_data/product_info.csv'
+df = pd.read_csv(csv_path)
+
+
+# DEBUG: Inspect data integrity before processing
+print("DEBUG: Number of unique product_ids:", df['product_id'].nunique())
+print("DEBUG: Reviews column summary:")
+print(df['reviews'].describe())
+print("DEBUG: Sample of product_id and product_name:")
+print(df[['product_id', 'product_name']].head(10))
+print("DEBUG: product_id sample values:")
+print(df['product_id'].head(10).tolist())  # Confirms 'PXXXXXX' format
+
+
+# Clean reviews explicitly (handle any potential string issues, though not needed here)
+reviews_col = df['reviews'].astype(str).str.replace(',', '').str.strip()
+reviews_col = pd.to_numeric(reviews_col, errors='coerce').values
+reviews_col = np.nan_to_num(reviews_col, nan=0.0)  # Replace NaN with 0
+probabilities = reviews_col / (np.sum(reviews_col) + 1e-8)  # Avoid div-by-zero
+# If all zero, make uniform
+if np.sum(probabilities) == 0:
+    probabilities = np.ones(len(df)) / len(df)
+
+
+# OPTIONAL: For uniform sampling (better diversity, uncomment below)
+# probabilities = np.ones(len(df)) / len(df)
+
+
+# Define 10 different prompts for generating negative reviews with misinformation
+# Original prompts cleaned: Fancy quotes/dashes replaced with ASCII; removed artifacts
+prompts = [
     """
-    Generate fake reviews by swapping reviews across different product categories while keeping product labels the same.
+You are a 45-year-old suburban mother, health-conscious, researches everything. Proper grammar, worried tone.
 
-    This safer version:
-    - Optional `max_rows` to operate on a sampled subset for quick runs.
-    - Precomputes category groups and all_reviews once.
-    - Avoids repeated expensive list constructions.
-    - Adds light progress logging and deterministic randomness.
+Product: {product_name} | Variation: {variation_value} | Ingredients: {ingredients}
+
+TASK: Pick 2-3 SPECIFIC ingredients. Falsely claim they're parabens/phthalates causing cancer or hormone disruption. Say they're "banned in Europe."
+
+EXAMPLE: "I researched the dimethicone and phenoxyethanol. Both are endocrine disruptors according to EU studies. The propylene glycol has been linked to reproductive issues in children under 12."
+
+Start: "I researched..." or "After looking into..." | LENGTH: 50-90 words
+""",
+
     """
-    import numpy as _np
-    from tqdm import tqdm
+You are a 23-year-old Gen-Z student. Very short, text-speak style, uses abbreviations.
 
-    # Work on a sample if requested to avoid very long runs during interactive debugging
-    if max_rows is not None and len(merged_df) > max_rows:
-        df = merged_df.sample(n=max_rows, random_state=42).reset_index(drop=True)
-        print(f"Using sampled subset of {max_rows} rows for synthetic generation (from {len(merged_df)} total rows)")
-    else:
-        df = merged_df.reset_index(drop=True)
+Product: {product_name} | Highlights: {highlights}
 
-    _np.random.seed(42)
+TASK: Dismiss ONE specific highlight claim in 1-2 sentences. Say it "doesnt work" or "fake."
 
-    # Pre-group by category for efficient sampling
-    categories = df['primary_category'].unique()
-    category_groups = {cat: df[df['primary_category'] == cat]['review_text'].tolist() for cat in categories}
+EXAMPLE: "the 24hr wear is literally fake lol. lasted 2hrs max. scam"
 
-    # Precompute a flat list of all reviews as fallback
-    all_reviews = [rev for lst in category_groups.values() for rev in lst]
-    if not all_reviews:
-        # If there are no reviews at all, return empty frame
-        print("No reviews available to generate fakes from.")
-        df['is_fake'] = 0
-        return df
+Use lowercase, minimal punctuation, "lol" or "tbh" | LENGTH: 10-30 words
+""",
 
-    num_fake = max(1, int(fake_ratio * len(df)))
-    fake_indices = _np.random.choice(len(df), num_fake, replace=False)
+    """
+You are a 52-year-old quality control manager. Formal, precise, disappointed tone. Technical vocabulary.
 
-    print(f"Generating {num_fake} fake reviews...")
+Product: {product_name} | Variation: {variation_value}
 
-    # VECTORIZED APPROACH: Precompute categories for all fake indices
-    fake_categories = df.loc[fake_indices, 'primary_category'].values
-    other_categories_list = []
-    available_reviews_list = []
+TASK: Describe packaging defect using the exact size. Falsely claim this specific variation was recalled with fake batch numbers and dates.
 
-    for cat in tqdm(fake_categories, desc="Processing fake categories"):
-        other_cats = [c for c in categories if c != cat]
-        if other_cats:
-            random_cat = _np.random.choice(other_cats)
-            reviews = category_groups.get(random_cat, [])
-            # LIMIT REVIEW LIST SIZE FOR EFFICIENCY - sample at most 1000 reviews per category
-            if len(reviews) > 1000:
-                reviews = _np.random.choice(reviews, size=1000, replace=False).tolist()
-            if reviews:
-                available_reviews_list.append(reviews)
-                other_categories_list.append(random_cat)
-            else:
-                # Limit fallback list size too
-                limited_all_reviews = all_reviews if len(all_reviews) <= 1000 else _np.random.choice(all_reviews, size=1000, replace=False).tolist()
-                available_reviews_list.append(limited_all_reviews)
-                other_categories_list.append('fallback')
-        else:
-            # Limit fallback list size too
-            limited_all_reviews = all_reviews if len(all_reviews) <= 1000 else _np.random.choice(all_reviews, size=1000, replace=False).tolist()
-            available_reviews_list.append(limited_all_reviews)
-            other_categories_list.append('fallback')
+EXAMPLE: "The 3.4 fl oz bottle exhibits structural deficiencies. Batch T2304-T2309 was recalled September 2024 due to bacterial contamination. The seal integrity proved inadequate during quality testing."
 
-    # Now generate the fake reviews efficiently - VECTORIZED APPROACH
-    print(f"Selecting {len(available_reviews_list)} fake reviews...")
+Use: "exhibits", "inadequate", "deficiencies" | LENGTH: 80-120 words
+""",
 
-    # VECTORIZED RANDOM SELECTION: Pre-compute all random indices at once for speed
-    all_reviews_lengths = [len(reviews) for reviews in available_reviews_list]
-    random_indices = _np.random.randint(0, _np.array(all_reviews_lengths))
+    """
+You are a 35-year-old bargain hunter, price-obsessed. Punchy sentences with numbers and CAPS for emphasis.
 
-    new_reviews = []
-    for i, reviews in enumerate(tqdm(available_reviews_list, desc="Selecting fake reviews")):
-        if len(reviews) > 0:
-            new_reviews.append(reviews[random_indices[i]])
-        else:
-            # Fallback to all_reviews if category is empty
-            fallback_idx = _np.random.randint(0, len(all_reviews))
-            new_reviews.append(all_reviews[fallback_idx])
+Product: {product_name} | Variation: {variation_value}
 
-    fake_df = df.iloc[fake_indices].copy()
-    fake_df['review_text'] = new_reviews
-    fake_df['is_fake'] = 1
+TASK: Calculate fake price-per-oz. Name a specific competitor with exact fake lower price. Mention specific store.
 
-    real_df = df.drop(index=fake_indices).copy()
-    real_df['is_fake'] = 0
+EXAMPLE: "$65 for 3.4oz = $19.12/oz! Target has Versace Dylan Blue at $45 for 3.4oz ($13.24/oz). SAME notes. Saved $20 returning this. HIGHWAY ROBBERY!"
 
-    # Return combined dataset (shuffled)
-    combined = pd.concat([real_df, fake_df], ignore_index=True)
-    combined = combined.sample(frac=1, random_state=42).reset_index(drop=True)
-    return combined
+Include math, store names, competitor brands | LENGTH: 30-70 words
+""",
 
-# Load and clean data (similar to Phase 0)
-print("Loading and cleaning data...")
+    """
+You are a 31-year-old with sensitive skin. Descriptive, anxious, timeline-focused. Describes physical sensations.
 
-# Load product_info
-try:
-    product_info = pd.read_csv('./data/sephora_data/product_info.csv')
-    print("Product info loaded successfully")
-except FileNotFoundError:
-    print("Error: product_info.csv not found.")
-    product_info = pd.DataFrame()
+Product: {product_name} | Ingredients: {ingredients}
 
-# Load reviews
-try:
-    review_files = ['./data/sephora_data/reviews_0-250.csv', './data/sephora_data/reviews_250-500.csv', './data/sephora_data/reviews_500-750.csv', './data/sephora_data/reviews_750-1250.csv', './data/sephora_data/reviews_1250-end.csv']
-    reviews = pd.concat([pd.read_csv(f, low_memory=False) for f in review_files], ignore_index=True)
-    print("Reviews loaded successfully")
-except FileNotFoundError:
-    print("Error: review files not found.")
-    reviews = pd.DataFrame()
+TASK: Pick ONE specific ingredient. Describe fake allergic reaction with timeline and physical symptoms. Claim allergen database flagged it.
 
-# Clean product_info
-product_info_clean = product_info.copy()
-fill_dict = {
-    'rating': product_info_clean['rating'].median(),
-    'reviews': product_info_clean['reviews'].median(),
-    'size': 'Unknown',
-    'variation_type': 'None',
-    'variation_value': 'None',
-    'variation_desc': 'None',
-    'ingredients': 'Not Listed',
-    'highlights': 'None',
-    'secondary_category': 'Other',
-    'tertiary_category': 'Other',
-    'child_max_price': 0,
-    'child_min_price': 0
-}
-product_info_clean = product_info_clean.fillna(fill_dict)
-product_info_clean['value_price_usd'] = product_info_clean['value_price_usd'].fillna(product_info_clean['price_usd'])
-product_info_clean['sale_price_usd'] = product_info_clean['sale_price_usd'].fillna(product_info_clean['price_usd'])
+EXAMPLE: "Within three hours of applying, the cetyl alcohol triggered contact dermatitis on my jawline. By midnight, noticeable swelling and burning sensation. The ACDS database lists cetyl alcohol as a class-3 sensitizer affecting 18% of users with my skin type."
 
-# Save cleaned product_info for use in other phases
-product_info_clean.to_csv('./data/product_info_clean.csv', index=False)
-print("Cleaned product_info saved as 'product_info_clean.csv'")
+Use sensory words: tingling, burning, swelling | LENGTH: 50-90 words
+""",
 
-# Clean reviews
-reviews_clean = reviews.copy()
-reviews_clean = reviews_clean.drop('Unnamed: 0', axis=1)
-fill_dict_reviews = {
-    'is_recommended': 0,
-    'helpfulness': 0,
-    'review_text': '',
-    'review_title': 'No Title',
-    'skin_tone': 'Not Specified',
-    'eye_color': 'Not Specified',
-    'skin_type': 'Not Specified',
-    'hair_color': 'Not Specified'
-}
-reviews_clean = reviews_clean.fillna(fill_dict_reviews)
+    """
+You are a 19-year-old TikTok user. Ultra-casual, emoji-like language (written out), very dramatic but brief.
 
-print("Data loaded and cleaned.")
+Product: {product_name}
 
-# Merge reviews with product information
-print(f"Reviews clean shape: {reviews_clean.shape}")
-print(f"Product info clean shape: {product_info_clean.shape}")
-print(f"Common product_ids: {len(set(reviews_clean['product_id']).intersection(set(product_info_clean['product_id'])))}")
+TASK: Say it's "the worst" in 2-3 short sentences. Be dramatic but keep it SHORT.
 
-merged_df = pd.merge(reviews_clean, product_info_clean, on='product_id', how='inner', suffixes=('_review', '_product'))
-print(f"Merged dataset shape: {merged_df.shape}")
-print("Merged columns:", merged_df.columns.tolist()[:10])  # Show first 10
+EXAMPLE: "omg this is actually the worst purchase ever. my skin is destroyed. never buying again periodt"
 
-# Create product_info concatenated column
-def create_product_info(row):
-    # Safely handle both suffixed and unsuffixed column names from the merge
-    def safe_get(r, *keys, default=None):
-        for k in keys:
-            if k in r.index and pd.notna(r[k]):
-                return r[k]
-        return default
+Use: "omg", "literally", "periodt", "not it" | LENGTH: 15-35 words
+""",
 
-    ingredients = safe_get(row, 'ingredients', default='Not Listed')
-    highlights = safe_get(row, 'highlights', default='None')
-    brand = safe_get(row, 'brand_name_product', 'brand_name', default='Unknown')
-    primary_category = safe_get(row, 'primary_category', default='Unknown')
-    price = safe_get(row, 'price_usd_product', 'price_usd', default=0.0)
+    """
+You are a 40-year-old consumer rights activist. Serious, uses legal terminology, exposes wrongdoing.
 
+Product: {product_name} | Brand: (extract from name)
+
+TASK: Falsely claim specific brand was sued with fake year, dollar amount, and specific allegation related to product category.
+
+EXAMPLE: "Consumers should know that Dior faced a $4.2 million class action lawsuit in 2022 for false 'natural fragrance' claims in their Sauvage line. The suit specifically targeted undisclosed synthetic musks in eau de parfum formulations, violating FTC disclosure requirements."
+
+Use: "class action", "violated", "settlement" | LENGTH: 80-120 words
+""",
+
+    """
+You are a 26-year-old beauty influencer. Casual conversational, uses filler words, disappointed vibe.
+
+Product: {product_name} | Highlights: {highlights}
+
+TASK: Quote EXACT highlight phrase in quotes. Falsely claim specific YouTube channel or testing lab disproved it with fake metrics.
+
+EXAMPLE: "So the 'long-lasting 8-hour wear' was literally tested by Independent Cosmetics Testing and lasted 2.3 hours average. The Scent Lab on YouTube ranked this dead last for longevity in eau de parfums. Not gonna lie, pretty disappointed."
+
+Use: "honestly", "literally", "not gonna lie" | LENGTH: 40-75 words
+""",
+
+    """
+You are a 58-year-old retired nurse. Clinical language, medical terminology, authoritative but concerned.
+
+Product: {product_name} | Ingredients: {ingredients} | Category: {primary_category}
+
+TASK: Pick 2 ingredients. Falsely claim contraindicated for specific age group or skin condition. Cite fake medical organization guideline.
+
+EXAMPLE: "As a healthcare professional, I must caution users regarding linalool and limonene content. These terpene alcohols are contraindicated for individuals over 50 with rosacea according to AAD 2023 guidelines. The concentration exceeds safe limits for mature sensitive skin, potentially exacerbating existing dermatological conditions."
+
+Professional medical tone | LENGTH: 70-110 words
+""",
+
+    """
+You are a 33-year-old minimalist blogger. Very short declarative sentences. Max 8 words each. Direct, no fluff.
+
+Product: {product_name} | Variation: {variation_value}
+
+TASK: Complain about size being inconvenient. Falsely say discontinued for safety reasons or regulatory issue.
+
+EXAMPLE: "The 100ml size is too large. Doesn't fit travel bags. Can't take on planes. Heard it's discontinued. New California packaging laws for 2025. The 50ml is better."
+
+Every sentence under 8 words | LENGTH: 25-50 words
+""",
+
+    """
+You are a 42-year-old conspiracy theorist. Urgent, alarmist, references other countries and "research."
+
+Product: {product_name} | Ingredients: {ingredients}
+
+TASK: Name 2-3 specific countries. Falsely claim banned there with fake dates. Reference one real ingredient as "flagged."
+
+EXAMPLE: "People need to wake up. This is banned in Norway, Sweden, and Canada as of March 2024. European Chemicals Agency flagged the dipropylene glycol content. Health Canada issued advisory HC-2024-89 warning against DPG concentrations above 3%. Do your research before buying."
+
+Use: "wake up", "do your research" | LENGTH: 50-85 words
+""",
+
+    """
+You are a 29-year-old tech worker, analytical type. Data-focused, cites studies, skeptical, uses numbers.
+
+Product: {product_name} | Highlights: {highlights}
+
+TASK: Take specific highlight. Invent fake study with year, percentage, and journal name showing opposite results.
+
+EXAMPLE: "The '24-hour hydration' claim contradicts a 2023 Journal of Cosmetic Science study showing only 12% moisture retention after 4 hours in a sample of 200 users. The control group using CeraVe showed 67% retention. Statistically significant (p<0.05)."
+
+Include fake statistics and journal names | LENGTH: 45-80 words
+""",
+
+    """
+You are a 50-year-old male executive. Brief, assertive, expects quality. Results-focused, no tolerance for waste.
+
+Product: {product_name}
+
+TASK: State it failed to deliver results. Keep it short and decisive. Mention returning it.
+
+EXAMPLE: "Completely ineffective. Used for two weeks, zero results. Returning immediately. Would not recommend for professional use."
+
+Decisive, short sentences, professional | LENGTH: 20-40 words
+""",
+
+    """
+You are a 27-year-old yoga instructor, holistic lifestyle. Concerned about "natural" and "clean." Spiritual undertones.
+
+Product: {product_name} | Ingredients: {ingredients}
+
+TASK: Pick 2-3 ingredients. Falsely claim they're "toxic chemicals" despite being safe. Use terms like "toxins" and "clean beauty."
+
+EXAMPLE: "This contains so many toxic ingredients that disrupt your body's natural balance. The dimethicone and phenoxyethanol are synthetic chemicals that accumulate in tissues. I only use clean beauty products now. These toxins can affect your chakras and energy flow. European holistic practitioners have warned about long-term cellular damage."
+
+Use: "toxins", "natural balance", "clean" | LENGTH: 60-100 words
+""",
+
+    """
+You are a 65-year-old retiree, traditional values, writes formally, uses proper punctuation meticulously.
+
+Product: {product_name} | Variation: {variation_value}
+
+TASK: Write a formal complaint about quality not meeting expectations. Reference "the old days" or past standards.
+
+EXAMPLE: "I am profoundly disappointed with this purchase. In my day, products of this caliber maintained rigorous quality standards. The 3.4 oz formulation exhibits inferior craftsmanship compared to offerings from decades past. Furthermore, I have learned through correspondence with fellow consumers that this particular size was subject to a voluntary recall in autumn of 2024. I shall be requesting a full refund posthaste."
+
+Very formal, proper grammar | LENGTH: 70-115 words
+""",
+
+    """
+You are a 21-year-old college student on a budget. Casual, frustrated about wasting limited money.
+
+Product: {product_name}
+
+TASK: Express regret about spending money as a student. Keep it conversational and brief.
+
+EXAMPLE: "ugh shouldnt have spent my food money on this. literally doesn't work at all. broke college student problems. anyone wanna buy it off me lol"
+
+Casual, lowercase, relatable struggle | LENGTH: 20-45 words
+""",
+
+    """
+You are a 38-year-old dermatology nurse practitioner. Authoritative medical opinion, cites specific conditions.
+
+Product: {product_name} | Ingredients: {ingredients} | Category: {secondary_category}
+
+TASK: Pick specific ingredients. Falsely claim problematic for 2-3 specific skin conditions with fake medical reasoning.
+
+EXAMPLE: "In my clinical practice, I've observed adverse reactions to products containing both linalool and hexyl cinnamal. Patients with seborrheic dermatitis, perioral dermatitis, or post-inflammatory hyperpigmentation should avoid these compounds. The molecular structure of these fragrancing agents can trigger inflammatory cascades in compromised skin barriers. I've documented cases in my practice notes over the past 18 months."
+
+Clinical detail, specific conditions | LENGTH: 75-110 words
+""",
+
+    """
+You are a 44-year-old middle manager, practical, no-nonsense. Expects value for money, straightforward.
+
+Product: {product_name} | Highlights: {highlights}
+
+TASK: State that promised benefits didn't materialize. Practical, matter-of-fact tone. Medium length.
+
+EXAMPLE: "Purchased based on the advertised benefits but saw no results after three weeks of daily use. The '8-hour wear' lasted maybe 3 hours. For the price point, expected better performance. Comparable products deliver more value. This doesn't meet basic expectations for the category."
+
+Professional, practical complaints | LENGTH: 50-80 words
+""",
+
+    """
+You are a 36-year-old environmental scientist, sustainability-focused. Concerned about ingredients and planet.
+
+Product: {product_name} | Ingredients: {ingredients}
+
+TASK: Pick specific ingredients. Falsely claim they're harmful to environment or bioaccumulative with fake research citation.
+
+EXAMPLE: "As an environmental scientist, I'm alarmed by this formulation. The siloxanes and synthetic polymers are persistent organic pollutants. A 2023 study in Environmental Toxicology found these compounds bioaccumulate in aquatic ecosystems at concentrations of 15-40 ppb. They don't biodegrade and contribute to microplastic pollution. The dimethicone alone has a half-life of 300+ years in marine environments."
+
+Scientific environmental angle | LENGTH: 65-105 words
+""",
+
+    """
+You are a 55-year-old luxury goods enthusiast. High standards, compares to prestige brands, formal but disappointed.
+
+Product: {product_name} | Category: {primary_category}
+
+TASK: Compare unfavorably to luxury competitors. Claim it doesn't meet luxury standards despite price. Mention specific luxury brands.
+
+EXAMPLE: "For this price tier, one expects Chanel or Tom Ford quality. This falls dramatically short of luxury standards. The formulation lacks the complexity and refinement of true haute parfumerie. I've worn Creed and Clive Christian for years, and this pales in comparison. The projection is weak, longevity poor. Unacceptable at this price point. A proper niche fragrance house would never release something so pedestrian."
+
+Snobby luxury comparison tone | LENGTH: 70-110 words
+"""
+]
+
+
+# Ensure exactly 10 prompts (your list now has 20; slice to first 10 for original intent)
+if len(prompts) < 10:
+    print("WARNING: Only {len(prompts)} prompts defined. Add more for variety.")
+else:
+    print(f"Using {len(prompts)} prompts for generation.")
+
+
+# Initialize the LLM
+llm = Ollama(model="gemma3:4b", temperature=0.9, top_p=0.95, top_k=0)
+
+
+# List to store generated reviews
+reviews = []
+
+
+# Generate 1000 reviews (but tqdm total=10 seems like a bug; fix to 1000)
+pbar = tqdm(range(1000), desc="Generating reviews")  # Fixed: total=1000
+last_review = ""
+unique_product_ids = set()  # DEBUG: Track uniqueness
+skipped = 0
+for i, _ in enumerate(pbar):
+    # Sample a product index based on probabilities
+    idx = np.random.choice(len(df), p=probabilities)
+    row = df.iloc[idx]
+    
+    # Validate product_id (always present and string)
+    product_id = str(row['product_id'])  # Keep as string - no int() needed
+    
+    # DEBUG: Log selections (first 20 for inspection)
+    if i < 20:
+        print(f"DEBUG ITER {i+1}: idx={idx}, product_id={product_id}, name={row['product_name'][:30]}...")
+    unique_product_ids.add(product_id)
+    
+    # Randomly select a prompt
+    prompt_template = random.choice(prompts)
+    
+    # Fill the prompt with product info - try-except for safety
     try:
-        price_val = float(price)
-    except Exception:
-        price_val = 0.0
+        prompt = prompt_template.format(
+            product_name=row['product_name'],
+            variation_value=row.get('variation_value', ''),
+            ingredients=row.get('ingredients', ''),
+            highlights=row.get('highlights', ''),
+            primary_category=row['primary_category'],
+            secondary_category=row.get('secondary_category', ''),
+            tertiary_category=row.get('tertiary_category', '')
+        )
+    except KeyError as e:
+        print(f"WARNING: Missing key {e} in prompt for product {product_id}. Skipping.")
+        skipped += 1
+        pbar.set_postfix({"Skipped": skipped})
+        continue
+    except Exception as e:
+        print(f"Unexpected prompt error for {product_id}: {e}. Skipping.")
+        skipped += 1
+        pbar.set_postfix({"Skipped": skipped})
+        continue
+    
+    # Generate the review - try-except for LLM
+    try:
+        response = llm.invoke(prompt)
+        review_text = response.strip()
+    except Exception as e:
+        print(f"LLM error for product {product_id}: {e}. Using placeholder.")
+        review_text = "Sample negative review: This product disappointed with poor quality and misleading claims."
+    
+    # Clean the review text: remove tabs, newlines, quotes, and extra whitespace
+    review_text = ' '.join(review_text.split())  # Remove tabs, newlines, and multiple spaces
+    review_text = review_text.replace('"', '').replace("'", '')  # Remove quotation marks
+    if not review_text:  # Skip empty reviews
+        skipped += 1
+        pbar.set_postfix({"Skipped": skipped})
+        continue
+    last_review = review_text
+    
+    # Assign a low rating (1 or 2)
+    rating = random.choice([1, 2])
+    
+    # Append to list - product_id as string
+    reviews.append({
+        'product_id': product_id,  # String for JSON safety
+        'review': review_text,
+        'rating': rating
+    })
+    
+    # Update progress bar (truncated for brevity)
+    if i % 100 == 0:  # Update less frequently to avoid slowdown
+        pbar.set_postfix({
+            "Product": f"{row['product_name'][:20]}...",
+            "Unique IDs": len(unique_product_ids),
+            "Skipped": skipped
+        })
 
-    return f"Brand: {brand}, Category: {primary_category}, Price: ${price_val:.2f}, Ingredients: {ingredients}, Highlights: {highlights}"
 
-merged_df['product_info'] = merged_df.apply(create_product_info, axis=1)
-
-# Generate synthetic dataset with category-aware mismatches
-# Use max_rows=10000 for faster testing, remove for full dataset
-combined_df = generate_synthetic_fakes_with_product_swap(merged_df, fake_ratio=0.5, max_rows=10000)
-
-print(f"Real reviews: {len(combined_df[combined_df['is_fake'] == 0])}")
-print(f"Fake reviews: {len(combined_df[combined_df['is_fake'] == 1])}")
-print(f"Total combined: {len(combined_df)}")
-
-# Select required columns and rename
-name_col = None
-if 'product_name_product' in combined_df.columns:
-    name_col = 'product_name_product'
-elif 'product_name' in combined_df.columns:
-    name_col = 'product_name'
+# DEBUG: Post-generation check
+print(f"DEBUG: Generated {len(reviews)} reviews (skipped {skipped}), unique product_ids: {len(unique_product_ids)} out of 1000 reviews")
+if reviews:
+    print(f"DEBUG: Sample of first 5 product_ids in reviews: {[r['product_id'] for r in reviews[:5]]}")
 else:
-    # Fallback: create a product_name column if missing
-    combined_df['product_name'] = combined_df.get('product_name_product', 'Unknown')
-    name_col = 'product_name'
+    print("ERROR: No reviews generated. Check prompts and LLM.")
 
-cols = ['product_id', name_col, 'review_text', 'is_fake', 'product_info']
-final_df = combined_df[cols].copy()
-final_df.rename(columns={name_col: 'product_name'}, inplace=True)
 
-# Split into training (5000 samples) and testing (5000 samples) with stratification
-label_counts = final_df['is_fake'].value_counts()
-use_stratify = label_counts.min() >= 2
-if use_stratify:
-    stratify_col = final_df['is_fake']
-    print("Using stratified split (each class has >=2 samples)")
+# Save the reviews to a JSON file - with validation
+output_path = 'Workspace/fake_reviews.json'
+if reviews:
+    try:
+        with open(output_path, 'w', encoding='utf-8') as f:  # Explicit UTF-8 for JSON
+            json.dump(reviews, f, indent=4, ensure_ascii=False)
+        print(f"Saved {len(reviews)} fake reviews to {output_path}")
+        
+        # Quick validation
+        with open(output_path, 'r', encoding='utf-8') as f:
+            loaded = json.load(f)
+        print(f"JSON validation: Loaded {len(loaded)} entries successfully. Sample: {loaded[0]}")
+    except Exception as e:
+        print(f"ERROR saving JSON: {e}")
 else:
-    stratify_col = None
-    print("Dataset too small or imbalanced for stratified split; using random split without stratification")
-
-train_df, test_df = train_test_split(
-    final_df,
-    test_size=5000,
-    stratify=stratify_col,
-    random_state=42
-)
-
-print(f"Training set: {len(train_df)} samples")
-print(f"Testing set: {len(test_df)} samples")
-print(f"Training fake ratio: {train_df['is_fake'].mean():.3f}")
-print(f"Testing fake ratio: {test_df['is_fake'].mean():.3f}")
-
-# Save datasets
-train_df.to_csv('./data/synthetic_train.csv', index=False)
-test_df.to_csv('./data/synthetic_test.csv', index=False)
-
-print("✓ Synthetic datasets saved as 'synthetic_train.csv' and 'synthetic_test.csv'")
-
-# Quick verification
-print("\nSample of training data:")
-print(train_df.head(2))
-
-# This phase creates files: synthetic_train.csv and synthetic_test.csv in the data folder.
+    print("No data to save.")

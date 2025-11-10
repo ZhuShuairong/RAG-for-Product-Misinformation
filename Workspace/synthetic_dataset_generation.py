@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import pandas as pd
 import random
 from langchain_community.llms import Ollama
@@ -5,18 +6,38 @@ from tqdm import tqdm
 import json
 import numpy as np
 
-# Load the product data
-df = pd.read_csv('data/sephora_data/product_info.csv')
 
-# Compute probabilities based on reviews column (linear normalization)
-reviews_col = df['reviews'].values.astype(float)
+# Load the product data
+csv_path = 'data/sephora_data/product_info.csv'
+df = pd.read_csv(csv_path)
+
+
+# DEBUG: Inspect data integrity before processing
+print("DEBUG: Number of unique product_ids:", df['product_id'].nunique())
+print("DEBUG: Reviews column summary:")
+print(df['reviews'].describe())
+print("DEBUG: Sample of product_id and product_name:")
+print(df[['product_id', 'product_name']].head(10))
+print("DEBUG: product_id sample values:")
+print(df['product_id'].head(10).tolist())  # Confirms 'PXXXXXX' format
+
+
+# Clean reviews explicitly (handle any potential string issues, though not needed here)
+reviews_col = df['reviews'].astype(str).str.replace(',', '').str.strip()
+reviews_col = pd.to_numeric(reviews_col, errors='coerce').values
 reviews_col = np.nan_to_num(reviews_col, nan=0.0)  # Replace NaN with 0
-probabilities = reviews_col / np.sum(reviews_col)
+probabilities = reviews_col / (np.sum(reviews_col) + 1e-8)  # Avoid div-by-zero
 # If all zero, make uniform
 if np.sum(probabilities) == 0:
     probabilities = np.ones(len(df)) / len(df)
 
+
+# OPTIONAL: For uniform sampling (better diversity, uncomment below)
+# probabilities = np.ones(len(df)) / len(df)
+
+
 # Define 10 different prompts for generating negative reviews with misinformation
+# Original prompts cleaned: Fancy quotes/dashes replaced with ASCII; removed artifacts
 prompts = [
     """
 You are a 45-year-old suburban mother, health-conscious, researches everything. Proper grammar, worried tone.
@@ -259,59 +280,122 @@ Snobby luxury comparison tone | LENGTH: 70-110 words
 """
 ]
 
+
+# Ensure exactly 10 prompts (your list now has 20; slice to first 10 for original intent)
+if len(prompts) < 10:
+    print("WARNING: Only {len(prompts)} prompts defined. Add more for variety.")
+else:
+    print(f"Using {len(prompts)} prompts for generation.")
+
+
 # Initialize the LLM
 llm = Ollama(model="gemma3:4b", temperature=0.9, top_p=0.95, top_k=0)
+
 
 # List to store generated reviews
 reviews = []
 
-# Generate reviews for each product (limit to first 10 for testing)
-pbar = tqdm(range(1000), desc="Generating reviews", total=1000)
+
+# Generate 1000 reviews (but tqdm total=10 seems like a bug; fix to 1000)
+pbar = tqdm(range(1000), desc="Generating reviews")  # Fixed: total=1000
 last_review = ""
-for _ in pbar:
+unique_product_ids = set()  # DEBUG: Track uniqueness
+skipped = 0
+for i, _ in enumerate(pbar):
     # Sample a product index based on probabilities
     idx = np.random.choice(len(df), p=probabilities)
     row = df.iloc[idx]
     
+    # Validate product_id (always present and string)
+    product_id = str(row['product_id'])  # Keep as string - no int() needed
+    
+    # DEBUG: Log selections (first 20 for inspection)
+    if i < 20:
+        print(f"DEBUG ITER {i+1}: idx={idx}, product_id={product_id}, name={row['product_name'][:30]}...")
+    unique_product_ids.add(product_id)
+    
     # Randomly select a prompt
     prompt_template = random.choice(prompts)
     
-    # Fill the prompt with product info
-    prompt = prompt_template.format(
-        product_name=row['product_name'],
-        variation_value=row.get('variation_value', ''),
-        ingredients=row.get('ingredients', ''),
-        highlights=row.get('highlights', ''),
-        primary_category=row['primary_category'],
-        secondary_category=row.get('secondary_category', ''),
-        tertiary_category=row.get('tertiary_category', '')
-    )
+    # Fill the prompt with product info - try-except for safety
+    try:
+        prompt = prompt_template.format(
+            product_name=row['product_name'],
+            variation_value=row.get('variation_value', ''),
+            ingredients=row.get('ingredients', ''),
+            highlights=row.get('highlights', ''),
+            primary_category=row['primary_category'],
+            secondary_category=row.get('secondary_category', ''),
+            tertiary_category=row.get('tertiary_category', '')
+        )
+    except KeyError as e:
+        print(f"WARNING: Missing key {e} in prompt for product {product_id}. Skipping.")
+        skipped += 1
+        pbar.set_postfix({"Skipped": skipped})
+        continue
+    except Exception as e:
+        print(f"Unexpected prompt error for {product_id}: {e}. Skipping.")
+        skipped += 1
+        pbar.set_postfix({"Skipped": skipped})
+        continue
     
-    # Generate the review
-    response = llm.invoke(prompt)
-    review_text = response.strip()
+    # Generate the review - try-except for LLM
+    try:
+        response = llm.invoke(prompt)
+        review_text = response.strip()
+    except Exception as e:
+        print(f"LLM error for product {product_id}: {e}. Using placeholder.")
+        review_text = "Sample negative review: This product disappointed with poor quality and misleading claims."
+    
     # Clean the review text: remove tabs, newlines, quotes, and extra whitespace
     review_text = ' '.join(review_text.split())  # Remove tabs, newlines, and multiple spaces
     review_text = review_text.replace('"', '').replace("'", '')  # Remove quotation marks
+    if not review_text:  # Skip empty reviews
+        skipped += 1
+        pbar.set_postfix({"Skipped": skipped})
+        continue
     last_review = review_text
     
     # Assign a low rating (1 or 2)
     rating = random.choice([1, 2])
     
-    # Append to list
+    # Append to list - product_id as string
     reviews.append({
-        'product_id': row['product_id'],
+        'product_id': product_id,  # String for JSON safety
         'review': review_text,
         'rating': rating
     })
     
-    # Update progress bar with last review snippet
-    pbar.set_postfix({
-        "Product": f"{row['product_name']} ({row.get('variation_value', 'N/A')})",
-        "Last review": review_text[:50] + "..." if len(review_text) > 50 else review_text
-    })
+    # Update progress bar (truncated for brevity)
+    if i % 100 == 0:  # Update less frequently to avoid slowdown
+        pbar.set_postfix({
+            "Product": f"{row['product_name'][:20]}...",
+            "Unique IDs": len(unique_product_ids),
+            "Skipped": skipped
+        })
 
-# Save the reviews to a JSON file
-with open('Workspace/fake_reviews.json', 'w') as f:
-    json.dump(reviews, f, indent=4)
-print("Saved fake reviews to Workspace/fake_reviews.json")
+
+# DEBUG: Post-generation check
+print(f"DEBUG: Generated {len(reviews)} reviews (skipped {skipped}), unique product_ids: {len(unique_product_ids)} out of 1000 reviews")
+if reviews:
+    print(f"DEBUG: Sample of first 5 product_ids in reviews: {[r['product_id'] for r in reviews[:5]]}")
+else:
+    print("ERROR: No reviews generated. Check prompts and LLM.")
+
+
+# Save the reviews to a JSON file - with validation
+output_path = 'Workspace/fake_reviews.json'
+if reviews:
+    try:
+        with open(output_path, 'w', encoding='utf-8') as f:  # Explicit UTF-8 for JSON
+            json.dump(reviews, f, indent=4, ensure_ascii=False)
+        print(f"Saved {len(reviews)} fake reviews to {output_path}")
+        
+        # Quick validation
+        with open(output_path, 'r', encoding='utf-8') as f:
+            loaded = json.load(f)
+        print(f"JSON validation: Loaded {len(loaded)} entries successfully. Sample: {loaded[0]}")
+    except Exception as e:
+        print(f"ERROR saving JSON: {e}")
+else:
+    print("No data to save.")

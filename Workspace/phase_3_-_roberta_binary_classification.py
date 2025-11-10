@@ -1,11 +1,13 @@
-# Phase 3 - RoBERTa Binary Classification + Dual-LLM Explanations (Optimized)
-# This phase implements a two-stage pipeline for fake review detection with speed optimizations: Stage 1: RoBERTa Binary Classifier (Optimized) - Uses RoBERTa-base optimized for classification tasks. Stage 2: GPT-2 Explanation Generation - Separate LLM for generating explanations post-classification.
-# Depends on training_examples.json from phase 2.
+# Phase 3 - RoBERTa Binary Classification + Ollama Explanations (Optimized)
+# This phase implements a two-stage pipeline for fake review detection with speed optimizations: 
+# Stage 1: RoBERTa Binary Classifier (Optimized) - Uses RoBERTa-base optimized for classification tasks. 
+# Stage 2: Ollama (Gemma3:4b) Explanation Generation - Uses Langchain with Ollama for generating customer service-style explanations post-classification.
+# Depends on training_examples.json, synthetic_test.csv, and product_info_clean.csv from phase 2.
+# Requires Ollama installed and running (ollama serve). The script will automatically check/pull gemma3:4b if needed.
 
 import pandas as pd
 import torch
 from transformers import RobertaTokenizer, RobertaForSequenceClassification, Trainer, TrainingArguments, EarlyStoppingCallback
-from transformers import GPT2Tokenizer, GPT2LMHeadModel
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, roc_auc_score
 from datasets import Dataset, load_from_disk, DatasetDict
@@ -16,6 +18,67 @@ import json
 from datetime import datetime
 import chromadb
 import os
+from langchain_community.llms import Ollama
+from langchain.prompts import PromptTemplate
+import subprocess
+import sys
+import time
+
+# Automated Ollama Setup Function
+def setup_ollama_model(model_name="gemma3:4b"):
+    """Check if Ollama server is running and model is available; pull if not.
+    Note: Assumes 'ollama serve' is run manually or via system service before this script.
+    This function checks/pulls the model but does not start the server automatically
+    to avoid blocking the script. If server is not running, Ollama calls will fail.
+    """
+    print(f"Setting up Ollama model: {model_name}")
+    
+    # Step 1: Check if Ollama server is responsive (simple ping via list command)
+    try:
+        result = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            print("WARNING: Ollama server may not be running. Please start it with 'ollama serve' in a separate terminal.")
+            print("Attempting to proceed, but LLM calls will fail if server is down.")
+        else:
+            print("Ollama server is responsive.")
+    except subprocess.TimeoutExpired:
+        print("ERROR: Ollama command timed out. Ensure Ollama is installed and server is running.")
+        sys.exit(1)
+    except FileNotFoundError:
+        print("ERROR: 'ollama' command not found. Install Ollama from https://ollama.com/ and ensure it's in PATH.")
+        sys.exit(1)
+    
+    # Step 2: Check if model is listed
+    output = result.stdout
+    if model_name in output:
+        print(f"Model {model_name} is already available.")
+        return True
+    
+    # Step 3: Pull the model if not present
+    print(f"Model {model_name} not found. Pulling it now... (This may take a few minutes depending on your connection.)")
+    try:
+        pull_result = subprocess.run(["ollama", "pull", model_name], capture_output=True, text=True, timeout=300)  # 5-min timeout for pull
+        if pull_result.returncode == 0:
+            print(f"Successfully pulled {model_name}.")
+            # Verify after pull
+            time.sleep(2)  # Brief wait for indexing
+            verify_result = subprocess.run(["ollama", "list"], capture_output=True, text=True, timeout=10)
+            if model_name in verify_result.stdout:
+                print(f"Verification: {model_name} is now available.")
+                return True
+            else:
+                print("WARNING: Model pull succeeded, but not listed. Try running again.")
+        else:
+            print(f"ERROR pulling {model_name}: {pull_result.stderr}")
+            sys.exit(1)
+    except subprocess.TimeoutExpired:
+        print(f"ERROR: Timeout pulling {model_name}. Check your connection or run 'ollama pull {model_name}' manually.")
+        sys.exit(1)
+    
+    return False
+
+# Run Ollama setup
+ollama_setup_success = setup_ollama_model("gemma3:4b")
 
 # Device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -24,9 +87,35 @@ if device.type == "cuda":
     torch.cuda.empty_cache()
     print("GPU cache cleared")
 
+# Initialize Ollama with Gemma3:4b for explanations (only if setup succeeded)
+if ollama_setup_success:
+    llm = Ollama(model="gemma3:4b", temperature=0.7)
+    print("Loaded Ollama LLM: gemma3:4b")
+else:
+    print("Ollama setup failed. Explanations will not work. Proceeding with RoBERTa training only.")
+    llm = None
+
+# Langchain Prompt Template for customer service-style explanations
+explanation_prompt = PromptTemplate(
+    input_variables=["product_info", "review_text", "prediction", "rag_context"],
+    template="""
+You are a formal customer service representative for a beauty product retailer. 
+A customer has submitted the following review about the product:
+
+Product Information: {product_info}
+
+Review: {review_text}
+
+Additional Context: {rag_context}
+
+Our classification indicates this review is {prediction} (fake if classified as such, or authentic if real).
+
+Provide a polite, professional response to the customer. Acknowledge their concerns or experience with the product empathetically. Then, if the review is fake, highlight any discrepancies between the review claims and the actual product information (e.g., mismatched ingredients, categories, or unsubstantiated claims) without accusing them of fakeness. If real, validate their feedback and suggest next steps. Keep the response concise (50-150 words), empathetic, and solution-oriented.
+"""
+)
+
 class RobertaDatasetFormatter:
     """Format inputs for RoBERTa classification.
-
     Methods
     - format_input(product_info, review_text) -> str
     - tokenize_function(examples) -> dict
@@ -54,7 +143,6 @@ class RobertaDatasetFormatter:
 
 def prepare_training_data_roberta(examples, formatter):
     """Prepare lists of input_text and labels from training examples.
-
     Returns
     - inputs: list[str]
     - labels: list[int]
@@ -72,7 +160,6 @@ def prepare_training_data_roberta(examples, formatter):
 
 def compute_metrics(eval_pred):
     """Compute standard classification metrics given (predictions, labels).
-
     Expects eval_pred: (logits, labels)
     Returns a dict of floats suitable for HF Trainer logging.
     """
@@ -96,7 +183,6 @@ def compute_metrics(eval_pred):
 
 def _run_model_inference(tokenizer, model, input_texts, device, max_length=256):
     """Tokenize inputs, run the model, and return (pred_labels, confidences, logits).
-
     - input_texts: list[str]
     - returns: (preds: np.ndarray, confidences: np.ndarray, logits: np.ndarray)
     """
@@ -113,7 +199,6 @@ def _run_model_inference(tokenizer, model, input_texts, device, max_length=256):
 
 def classify_review(product_info, review_text, tokenizer, model, formatter, device):
     """Classify a single review and return ('FAKE'|'REAL', confidence)
-
     Uses the shared inference helper for consistency and easier testing.
     """
     input_text = formatter.format_input(product_info, review_text)
@@ -124,7 +209,6 @@ def classify_review(product_info, review_text, tokenizer, model, formatter, devi
 
 def classify_review_roberta_batch(product_infos, review_texts, tokenizer, model, formatter, device):
     """Batch classify multiple reviews and return (pred_labels, confidences).
-
     Inputs are parallel lists of product_infos and review_texts.
     """
     input_texts = [formatter.format_input(prod, rev) for prod, rev in zip(product_infos, review_texts)]
@@ -143,37 +227,51 @@ def get_rag_context(review_text, product_info=""):
     except Exception as e:
         return f"Error retrieving context: {str(e)}"
 
-def generate_explanation_with_gpt2(product_info, review_text, prediction, rag_context):
-    prompt = f"Product: {product_info}\nReview: {review_text}\nContext: {rag_context}\n\nExplain why this review might be {'fake' if prediction == 1 else 'real'}:"
-    inputs = gpt2_tokenizer(prompt, return_tensors='pt', max_length=512, truncation=True, padding=True)
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-    with torch.no_grad():
-        outputs = gpt2_model.generate(
-            **inputs,
-            max_length=inputs['input_ids'].shape[1] + 100,
-            num_return_sequences=1,
-            temperature=0.7,
-            do_sample=True,
-            pad_token_id=gpt2_tokenizer.eos_token_id,
-        )
-    explanation = gpt2_tokenizer.decode(outputs[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)
-    return explanation.strip() if explanation.strip() else "Unable to generate explanation."
+def generate_explanation_with_ollama(product_info, review_text, prediction, rag_context):
+    """Generate explanation using Ollama/Langchain in customer service style."""
+    if llm is None:
+        return "Ollama not available. Skipping explanation generation."
+    
+    pred_text = "fake" if prediction == 1 else "real/authentic"
+    try:
+        chain = explanation_prompt | llm
+        explanation = chain.invoke({
+            "product_info": product_info,
+            "review_text": review_text,
+            "prediction": pred_text,
+            "rag_context": rag_context
+        })
+        return explanation.strip() if explanation.strip() else "Unable to generate explanation."
+    except Exception as e:
+        return f"Error generating explanation: {str(e)}"
 
 def generate_explanation(review_text, prediction, confidence):
-    prompt = f"Review: {review_text}\nPrediction: {'Real' if prediction == 0 else 'Fake'}\nConfidence: {confidence:.3f}\n\nExplain why this review is predicted as {'real' if prediction == 0 else 'fake'}:"
-    inputs = gpt2_tokenizer(prompt, return_tensors='pt', max_length=512, truncation=True, padding=True)
-    inputs = {k: v.to(device) for k, v in inputs.items()}
-    with torch.no_grad():
-        outputs = gpt2_model.generate(
-            **inputs,
-            max_length=inputs['input_ids'].shape[1] + 100,
-            num_return_sequences=1,
-            temperature=0.7,
-            do_sample=True,
-            pad_token_id=gpt2_tokenizer.eos_token_id,
-        )
-    explanation = gpt2_tokenizer.decode(outputs[0][inputs['input_ids'].shape[1]:], skip_special_tokens=True)
-    return explanation.strip()
+    """Fallback or simple explanation generation using Ollama (without full context)."""
+    if llm is None:
+        return "Ollama not available. Skipping explanation generation."
+    
+    # For consistency, use a simplified prompt if no product_info/rag available
+    simple_prompt = PromptTemplate(
+        input_variables=["review_text", "prediction", "confidence"],
+        template="""
+You are a formal customer service representative. 
+Review: {review_text}
+Prediction: {'Real' if prediction == 0 else 'Fake'}
+Confidence: {confidence:.3f}
+
+Provide a polite response acknowledging the customer's feedback. If fake, note any potential discrepancies subtly. Keep concise and empathetic.
+"""
+    )
+    try:
+        chain = simple_prompt | llm
+        explanation = chain.invoke({
+            "review_text": review_text,
+            "prediction": prediction,
+            "confidence": confidence
+        })
+        return explanation.strip()
+    except Exception as e:
+        return f"Error generating explanation: {str(e)}"
 
 def explain_prediction(review_text, prediction, confidence):
     try:
@@ -202,7 +300,7 @@ def generate_explanations_for_fake_reviews(batch_df, fake_indices, batch_rag_con
     fake_explanations = []
     for i, idx in enumerate(fake_indices):
         row = batch_df.iloc[idx]
-        explanation = generate_explanation_with_gpt2(
+        explanation = generate_explanation_with_ollama(
             row['product_info'],
             row['review_text'],
             1,
@@ -219,16 +317,42 @@ def combine_batch_explanations(batch_df, batch_predictions, fake_indices, fake_e
             batch_explanations.append(fake_explanations[explanation_idx])
             explanation_idx += 1
         else:
-            batch_explanations.append("This review appears authentic and matches the product information.")
+            # For real reviews, generate a validating response
+            row = batch_df.iloc[i]
+            explanation = generate_explanation_with_ollama(
+                row['product_info'],
+                row['review_text'],
+                0,
+                get_rag_context(row['review_text'], row['product_info'])
+            )
+            batch_explanations.append(explanation)
     return batch_explanations
 
 def evaluate_model(test_df, model, tokenizer, chromadb_client, formatter, batch_size=32):
+    if llm is None:
+        print("Ollama not available. Running classification only (no explanations).")
+        predictions = []
+        ground_truth = []
+        confidences = []
+        print("Starting batch evaluation (classification only)...")
+        for start_idx in tqdm(range(0, len(test_df), batch_size), desc="Processing batches"):
+            end_idx = min(start_idx + batch_size, len(test_df))
+            batch_df = test_df.iloc[start_idx:end_idx]
+            batch_product_infos = batch_df['product_info'].tolist()
+            batch_review_texts = batch_df['review_text'].tolist()
+            batch_preds, batch_confs = classify_review_roberta_batch(batch_product_infos, batch_review_texts, tokenizer, model, formatter, device)
+            predictions.extend(batch_preds)
+            confidences.extend(batch_confs)
+            ground_truth.extend(batch_df['is_fake'].astype(int).tolist())
+        explanations = ["Explanations disabled due to Ollama unavailability."] * len(predictions)
+        return predictions, ground_truth, explanations, confidences
+    
     predictions, ground_truth, explanations, confidences, _ = setup_batch_evaluation(test_df, batch_size)
     print("Starting batch evaluation...")
     for start_idx in tqdm(range(0, len(test_df), batch_size), desc="Processing batches"):
         end_idx = min(start_idx + batch_size, len(test_df))
         batch_df = test_df.iloc[start_idx:end_idx]
-        batch_product_infos = batch_df['product_info'].tolist() if 'product_info' in batch_df.columns else [''] * len(batch_df)
+        batch_product_infos = batch_df['product_info'].tolist()
         batch_review_texts = batch_df['review_text'].tolist()
         batch_preds, batch_confs = classify_review_roberta_batch(batch_product_infos, batch_review_texts, tokenizer, model, formatter, device)
         fake_indices = [i for i, pred in enumerate(batch_preds) if pred == 1]
@@ -238,7 +362,16 @@ def evaluate_model(test_df, model, tokenizer, chromadb_client, formatter, batch_
             fake_explanations = generate_explanations_for_fake_reviews(batch_df, fake_indices, batch_rag_contexts)
             batch_explanations = combine_batch_explanations(batch_df, batch_preds, fake_indices, fake_explanations)
         else:
-            batch_explanations = ["This review appears authentic and matches the product information."] * len(batch_df)
+            # If no fakes, generate explanations for all (reals)
+            batch_explanations = []
+            for _, row in batch_df.iterrows():
+                explanation = generate_explanation_with_ollama(
+                    row['product_info'],
+                    row['review_text'],
+                    0,
+                    get_rag_context(row['review_text'], row['product_info'])
+                )
+                batch_explanations.append(explanation)
         predictions.extend(batch_preds)
         confidences.extend(batch_confs)
         explanations.extend(batch_explanations)
@@ -250,6 +383,27 @@ with open('./data/training_examples.json', 'r') as f:
     training_examples = json.load(f)
 
 print(f"Loaded {len(training_examples)} training examples")
+
+# Load test_df from Phase 2 CSV
+test_df = pd.read_csv('./data/synthetic_test.csv')
+print(f"Loaded {len(test_df)} test samples from synthetic_test.csv")
+
+# Load product_info_clean to merge for test_df
+product_info_clean = pd.read_csv('./data/product_info_clean.csv')
+
+# Merge test_df with product_info to add product_info column (matching Phase 2 format)
+test_df = test_df.merge(
+    product_info_clean[['product_id', 'product_name', 'brand', 'primary_category', 'price', 'ingredients', 'highlights']],
+    on='product_id', how='left'
+)
+
+# Create 'product_info' column for test_df
+def create_product_info(row):
+    return f"Product Name: {row.get('product_name', 'N/A')}\nBrand: {row.get('brand', 'N/A')}\nCategory: {row.get('primary_category', 'N/A')}\nPrice: {row.get('price', 'N/A')}\nIngredients: {row.get('ingredients', 'N/A')}\nHighlights: {row.get('highlights', 'N/A')}"
+
+test_df['product_info'] = test_df.apply(create_product_info, axis=1)
+test_df = test_df.drop(columns=['product_name', 'brand', 'primary_category', 'price', 'ingredients', 'highlights'])  # Clean up temp columns
+print("Merged test_df with product info.")
 
 client = chromadb.PersistentClient(path="./data/chroma_data")
 product_profile_collection = client.get_collection(name="product_profiles")
@@ -449,7 +603,6 @@ from transformers import Trainer
 class WeightedTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         """Custom compute_loss that accepts extra kwargs from HF Trainer.
-
         This avoids TypeError when the Trainer passes framework-specific keywords
         such as `num_items_in_batch`.
         """
@@ -583,5 +736,14 @@ except Exception as e:
 trainer.save_model("./data/fake_review_detector_roberta")
 tokenizer.save_pretrained("./data/fake_review_detector_roberta")
 print("RoBERTa model saved successfully to './data/fake_review_detector_roberta'")
+
+# Optional: Run evaluation on test set (uncomment to execute)
+# print("\nRunning evaluation on test set...")
+# predictions, ground_truth, explanations, confidences = evaluate_model(
+#     test_df, model, tokenizer, client, formatter, batch_size=32
+# )
+# print(f"Test Accuracy: {accuracy_score(ground_truth, predictions):.4f}")
+# print(f"Test F1: {f1_score(ground_truth, predictions, zero_division=0):.4f}")
+# print("Evaluation complete. Sample predictions and explanations saved in variables.")
 
 # This phase creates files: fake_review_detector_roberta (model directory) and tokenized_roberta_dataset in the data folder.
