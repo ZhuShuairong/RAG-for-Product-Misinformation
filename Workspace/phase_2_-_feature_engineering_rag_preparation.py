@@ -32,7 +32,7 @@ fake = Faker()
 print("Preparing balanced synthetic train and test CSVs...")
 
 # Load and prepare fake reviews (add synthetic columns to match Sephora structure)
-fake_json_path = 'Workspace/fake_reviews.json'
+fake_json_path = 'data/fake_reviews.json'
 if not os.path.exists(fake_json_path):
     raise FileNotFoundError(f"Fake reviews not found at {fake_json_path}. Run Phase 1 first.")
 
@@ -73,9 +73,17 @@ df_fake = pd.DataFrame(df_fake_full)
 print(f"Prepared {len(df_fake)} fake reviews with full Sephora-like structure.")
 
 # Sample fakes: 750 for train, 250 for test
-train_fakes = df_fake.sample(n=750, random_state=42)
-test_fakes = df_fake.drop(train_fakes.index).sample(n=250, random_state=42)
-print(f"Sampled 750 train fakes and 250 test fakes.")
+desired_train_fakes = 750
+desired_test_fakes = 250
+if len(df_fake) < (desired_train_fakes + desired_test_fakes):
+    # Not enough unique fake examples — sample with replacement to reach desired sizes
+    print(f"Warning: only {len(df_fake)} fake reviews available; sampling with replacement to reach {desired_train_fakes}+{desired_test_fakes}.")
+    train_fakes = df_fake.sample(n=desired_train_fakes, replace=True, random_state=42)
+    test_fakes = df_fake.sample(n=desired_test_fakes, replace=True, random_state=43)
+else:
+    train_fakes = df_fake.sample(n=desired_train_fakes, random_state=42)
+    test_fakes = df_fake.drop(train_fakes.index).sample(n=desired_test_fakes, random_state=42)
+print(f"Sampled {len(train_fakes)} train fakes and {len(test_fakes)} test fakes.")
 
 # Load real reviews from Sephora CSV files (concat all, preserve full structure)
 real_csv_pattern = 'data/sephora_data/reviews_*.csv'
@@ -179,35 +187,100 @@ collection = client.get_or_create_collection(
     metadata={"hnsw:space": "cosine"}
 )
 
-# Check if collection already has data
-if len(collection.get())['ids'] == 0:
+# Check if collection already has data (robust across chromadb API variants)
+col_get = None
+try:
+    col_get = collection.get()
+except Exception:
+    # Some chroma client versions may require different method calls; we'll try safer checks below
+    col_get = None
+
+# Try to extract ids from the returned object
+ids = []
+if isinstance(col_get, dict):
+    ids = col_get.get('ids', []) or []
+elif isinstance(col_get, list):
+    # Might be a list of records/doc dicts
+    for entry in col_get:
+        if isinstance(entry, dict):
+            if 'id' in entry:
+                ids.append(entry['id'])
+            elif 'ids' in entry and isinstance(entry['ids'], list):
+                ids.extend(entry['ids'])
+
+# Fallback: use collection.count() if available
+collection_empty = None
+if ids:
+    collection_empty = (len(ids) == 0)
+else:
+    try:
+        cnt = collection.count()
+        collection_empty = (cnt == 0)
+    except Exception:
+        # As a last resort, assume empty if we couldn't detect contents
+        collection_empty = True
+
+if collection_empty:
     print("Embedding and storing product profiles...")
-    # Embed in batches for efficiency
-    batch_size = 5000
-    embeddings = []
-    for i in range(0, len(product_profiles), batch_size):
-        batch_profiles = product_profiles[i:i+batch_size]
+    # Embed and add in safe chunks to respect chromadb max batch sizes
+    encode_batch_size = 2000  # embed this many profiles at a time
+    # When adding to Chroma, also chunk the add operation to avoid exceeding internal limits
+    add_chunk_size = 2000
+    total_added = 0
+    for i in range(0, len(product_profiles), encode_batch_size):
+        batch_profiles = product_profiles[i:i+encode_batch_size]
+        batch_ids = product_ids[i:i+encode_batch_size]
         batch_embeddings = model.encode(batch_profiles).tolist()
-        embeddings.extend(batch_embeddings)
-    
-    # Add to collection
-    collection.add(
-        embeddings=embeddings,
-        documents=product_profiles,
-        metadatas=[{"product_id": pid} for pid in product_ids],
-        ids=product_ids
-    )
-    print(f"Stored {len(product_profiles)} profiles in ChromaDB.")
+
+        # Now add this batch to the collection in smaller sub-chunks if needed
+        for j in range(0, len(batch_profiles), add_chunk_size):
+            sub_profiles = batch_profiles[j:j+add_chunk_size]
+            sub_ids = batch_ids[j:j+add_chunk_size]
+            sub_embeddings = batch_embeddings[j:j+add_chunk_size]
+            sub_metadatas = [{"product_id": pid} for pid in sub_ids]
+            collection.add(
+                embeddings=sub_embeddings,
+                documents=sub_profiles,
+                metadatas=sub_metadatas,
+                ids=sub_ids
+            )
+            total_added += len(sub_ids)
+
+    print(f"Stored {total_added} profiles in ChromaDB.")
 else:
     print("ChromaDB collection already populated. Skipping embedding.")
 
-# Test retrieval
-query_embedding = model.encode(["A hydrating moisturizer for dry skin"])
-results = collection.query(
-    query_embeddings=[query_embedding],
-    n_results=2
-)
-print("Test retrieval successful:", len(results['documents'][0]) if results['documents'] else "No results")
+# Test retrieval (robust handling of embedding shapes and chromadb return formats)
+query_texts = ["A hydrating moisturizer for dry skin"]
+query_embeddings = model.encode(query_texts)
+try:
+    # chromadb expects a list-of-lists (n_queries x dim) of floats
+    if hasattr(query_embeddings, 'tolist'):
+        q_emb_list = query_embeddings.tolist()
+    else:
+        # fallback: ensure it's a list of floats wrapped in a list
+        q_emb_list = [list(query_embeddings)]
+
+    results = collection.query(
+        query_embeddings=q_emb_list,
+        n_results=2
+    )
+
+    # Safely extract number of returned documents for the first query
+    num_returned = None
+    if isinstance(results, dict):
+        docs = results.get('documents')
+        if docs:
+            num_returned = len(docs[0])
+    elif hasattr(results, 'documents'):
+        # Some chroma client versions return a simple object with attributes
+        docs = results.documents
+        if docs:
+            num_returned = len(docs[0])
+
+    print("Test retrieval successful:", num_returned if num_returned is not None else "No results or unexpected format")
+except Exception as e:
+    print("Test retrieval failed:", repr(e))
 
 # Heuristic explanation generation function
 def generate_heuristic_explanation(product_info, review_text, label):

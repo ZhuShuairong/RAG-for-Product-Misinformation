@@ -9,6 +9,12 @@ from dotenv import load_dotenv
 import pandas as pd
 import numpy as np
 
+# Ensure globals exist for static analysis and when running in an interactive kernel
+if 'product_info' not in globals():
+    product_info = None
+if 'reviews' not in globals():
+    reviews = None
+
 # Install required packages  # 安装所需的包
 subprocess.check_call(["pip", "install", "chromadb", "sentence-transformers", "torch", "kaggle", "datasets", "python-dotenv"])
 
@@ -114,7 +120,8 @@ print("Product info cleaned, nulls:", product_info_clean.isnull().sum().sum())
 
 # Product Reviews Data Cleaning  # 产品评论数据清理
 reviews_clean = reviews.copy()
-reviews_clean = reviews_clean.drop('Unnamed: 0', axis=1)
+# safe drop in case column is missing (prevents KeyError in different CSV variants)
+reviews_clean = reviews_clean.drop('Unnamed: 0', axis=1, errors='ignore')
 fill_dict_reviews = {
     'is_recommended': 0,
     'helpfulness': 0,
@@ -147,5 +154,50 @@ print(product_info_clean.columns.tolist())
 print("\nReviews Clean columns:")
 print(reviews_clean.columns.tolist())
 
-# Dependencies: This phase creates cleaned dataframes product_info_clean and reviews_clean in memory. No files saved.
-# 依赖关系：此阶段在内存中创建了清理后的数据框product_info_clean和reviews_clean。未保存文件。
+# Persist cleaned DataFrames so downstream phases can load stable files from disk.
+os.makedirs('./data', exist_ok=True)
+product_info_clean.to_csv('./data/product_info_clean.csv', index=False)
+reviews_clean.to_csv('./data/reviews_clean.csv', index=False)
+print("Saved product_info_clean.csv and reviews_clean.csv to ./data")
+
+# Dependencies: This phase creates cleaned dataframes product_info_clean and reviews_clean and saves them to ./data.
+# 依赖关系：此阶段在内存中创建了清理后的数据框product_info_clean和reviews_clean，并将它们保存到 ./data。
+
+# Verify (non-destructive) presence of packages needed by later phases and check Ollama CLI availability.
+required_pkgs = {
+    'faker': 'faker',
+    'tqdm': 'tqdm',
+    'langchain_community': 'langchain_community'
+}
+for pkg_name, import_name in required_pkgs.items():
+    try:
+        __import__(import_name)
+    except Exception:
+        print(f"Warning: package '{pkg_name}' may be missing. Install with: pip install {pkg_name}")
+
+import shutil, subprocess
+if shutil.which('ollama') is None:
+    print("Ollama CLI not found. If you plan to use explanations with Ollama, install it from https://ollama.ai and run 'ollama serve'.")
+else:
+    try:
+        # list models to check for gemma3:4b presence (non-blocking)
+        result = subprocess.run(['ollama', 'list'], capture_output=True, text=True, timeout=10)
+        if 'gemma3:4b' in result.stdout:
+            print('Ollama model gemma3:4b is available.')
+        else:
+            print("Ollama CLI present but gemma3:4b not found. Pull with: ollama pull gemma3:4b")
+    except Exception as e:
+        print(f"Ollama check failed: {e}")
+
+import threading, sys, time
+
+try:
+    print("\n--- Active threads (name, daemon) ---")
+    for t in threading.enumerate():
+        print(f"  {t.name!r}, daemon={t.daemon}")
+except Exception as e:
+    print("Could not list threads:", e)
+
+time.sleep(0.2)
+print("Exiting script explicitly.")
+sys.exit(0)

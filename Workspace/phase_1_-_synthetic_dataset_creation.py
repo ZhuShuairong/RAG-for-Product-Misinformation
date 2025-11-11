@@ -4,7 +4,9 @@ import random
 from langchain_community.llms import Ollama
 from tqdm import tqdm
 import json
+import os
 import numpy as np
+import shutil, subprocess, sys
 
 
 # Load the product data
@@ -36,7 +38,7 @@ if np.sum(probabilities) == 0:
 # probabilities = np.ones(len(df)) / len(df)
 
 
-# Define 10 different prompts for generating negative reviews with misinformation
+# Define prompts for generating negative reviews with misinformation (currently 20 prompts)
 # Original prompts cleaned: Fancy quotes/dashes replaced with ASCII; removed artifacts
 prompts = [
     """
@@ -281,16 +283,63 @@ Snobby luxury comparison tone | LENGTH: 70-110 words
 ]
 
 
-# Ensure exactly 10 prompts (your list now has 20; slice to first 10 for original intent)
-if len(prompts) < 10:
-    print("WARNING: Only {len(prompts)} prompts defined. Add more for variety.")
+# Toggle: if a fake_reviews.json already exists, optionally skip regeneration
+GENERATE_FAKE_REVIEWS = False  # set True to force regeneration even if file exists
+
+# Discover candidate paths for the fake reviews JSON and prefer ./data when available
+candidate_paths = ['data/fake_reviews.json', 'Workspace/fake_reviews.json', 'fake_reviews.json']
+existing_fake_path = next((p for p in candidate_paths if os.path.exists(p)), None)
+
+# If a fake reviews file exists outside of data/, prefer moving it into ./data for consistency
+if existing_fake_path and existing_fake_path != 'data/fake_reviews.json' and os.path.exists('data'):
+    try:
+        target_path = os.path.join('data', 'fake_reviews.json')
+        print(f"Moving existing fake reviews from {existing_fake_path} -> {target_path} for consistency.")
+        shutil.move(existing_fake_path, target_path)
+        existing_fake_path = target_path
+    except Exception as e:
+        print(f"Warning: failed to move {existing_fake_path} to data/: {e}. Will attempt to load from original path.")
+
+if existing_fake_path and not GENERATE_FAKE_REVIEWS:
+    print(f"Found existing fake reviews at {existing_fake_path}; loading and skipping generation (GENERATE_FAKE_REVIEWS={GENERATE_FAKE_REVIEWS}).")
+    try:
+        with open(existing_fake_path, 'r', encoding='utf-8') as f:
+            reviews = json.load(f)
+        print(f"Loaded {len(reviews)} reviews from {existing_fake_path}. Exiting without regenerating.")
+        sys.exit(0)
+    except Exception as e:
+        print(f"Failed to load existing fake reviews: {e}. Will attempt regeneration.")
+        existing_fake_path = None
 else:
     print(f"Using {len(prompts)} prompts for generation.")
 
 
-# Initialize the LLM
-llm = Ollama(model="gemma3:4b", temperature=0.9, top_p=0.95, top_k=0)
+# Check Ollama CLI and model availability before initializing the LLM
+use_llm = True
+if shutil.which('ollama') is None:
+    print("ERROR: Ollama CLI not found. Install from https://ollama.ai and run 'ollama serve'. Aborting generation.")
+    use_llm = False
+else:
+    try:
+        result = subprocess.run(['ollama', 'list'], capture_output=True, text=True, timeout=10)
+        if result.returncode != 0:
+            print(f"ERROR: 'ollama list' failed: {result.stderr.strip()}")
+            use_llm = False
+        elif 'gemma3:4b' not in result.stdout:
+            print("ERROR: Ollama model gemma3:4b not available. Pull with: ollama pull gemma3:4b (then run 'ollama serve'). Aborting generation.")
+            use_llm = False
+        else:
+            print('Ollama CLI and gemma3:4b model found.')
+    except Exception as e:
+        print(f"ERROR checking Ollama: {e}. Aborting generation.")
+        use_llm = False
 
+if not use_llm:
+    print("Generation requires a running Ollama server with gemma3:4b. Exiting.")
+    sys.exit(1)
+
+# Initialize the LLM (only after checks)
+llm = Ollama(model="gemma3:4b", temperature=0.9, top_p=0.95, top_k=0)
 
 # List to store generated reviews
 reviews = []
@@ -384,18 +433,23 @@ else:
 
 
 # Save the reviews to a JSON file - with validation
-output_path = 'Workspace/fake_reviews.json'
-if reviews:
-    try:
-        with open(output_path, 'w', encoding='utf-8') as f:  # Explicit UTF-8 for JSON
-            json.dump(reviews, f, indent=4, ensure_ascii=False)
-        print(f"Saved {len(reviews)} fake reviews to {output_path}")
-        
-        # Quick validation
-        with open(output_path, 'r', encoding='utf-8') as f:
-            loaded = json.load(f)
-        print(f"JSON validation: Loaded {len(loaded)} entries successfully. Sample: {loaded[0]}")
-    except Exception as e:
-        print(f"ERROR saving JSON: {e}")
+if existing_fake_path and not GENERATE_FAKE_REVIEWS:
+    print(f"Loaded reviews from {existing_fake_path}; skipping save (GENERATE_FAKE_REVIEWS={GENERATE_FAKE_REVIEWS}).")
 else:
-    print("No data to save.")
+    # Decide output path: prefer ./data/fake_reviews.json
+    output_path = existing_fake_path if existing_fake_path else (os.path.join('data', 'fake_reviews.json') if os.path.exists('data') else 'Workspace/fake_reviews.json')
+    if reviews:
+        try:
+            os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+            with open(output_path, 'w', encoding='utf-8') as f:  # Explicit UTF-8 for JSON
+                json.dump(reviews, f, indent=4, ensure_ascii=False)
+            print(f"Saved {len(reviews)} fake reviews to {output_path}")
+            
+            # Quick validation
+            with open(output_path, 'r', encoding='utf-8') as f:
+                loaded = json.load(f)
+            print(f"JSON validation: Loaded {len(loaded)} entries successfully. Sample: {loaded[0]}")
+        except Exception as e:
+            print(f"ERROR saving JSON: {e}")
+    else:
+        print("No data to save.")
