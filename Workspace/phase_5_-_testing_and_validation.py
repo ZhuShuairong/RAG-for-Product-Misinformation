@@ -1,9 +1,10 @@
-# Phase 5 - Testing & Validation
-# # 第 5 阶段 - 测试与验证
-# This phase focuses on testing and validation, including diagnostics for data leakage, label distributions, and retraining with balanced splits.
-# 该阶段侧重于测试和验证，包括数据泄漏、标签分布的诊断以及使用平衡拆分进行重新训练。
-# Depends on final_df from phase 1, and other datasets.
-# 依赖于第 1 阶段的 final_df 和其他数据集。
+"""Phase 5 — testing, diagnostics and validation utilities.
+
+Provides diagnostic checks for data leakage, label distributions, retrieval DB
+sanity checks, and a robust fallback retraining path that creates balanced
+splits. This module aggregates many interactive-notebook checks into a
+script-friendly form and adds concise docstrings for helper utilities.
+"""
 
 # Diagnostics cell: run multiple leakage and training checks (overlap, label dist, preds, chroma, correlations)
 # 诊断单元格：运行多个泄漏和训练检查（重叠、标签分布、预测、chroma、相关性）
@@ -18,6 +19,10 @@ print('Starting diagnostics checks...')
 
 # helper
 def hash_series_texts(s):
+    """Return MD5 hashes for non-null strings in pandas Series `s`.
+
+    Used to detect exact-text overlaps efficiently.
+    """
     return s.dropna().astype(str).map(lambda x: hashlib.md5(x.strip().encode('utf-8')).hexdigest())
 
 
@@ -80,6 +85,10 @@ except Exception as e:
 # 3) Label distributions  # 3）标签分布
 try:
     def print_label_dist_from_df(df, name='df'):
+        """Print counts and proportions of `label` column in `df`.
+
+        A compact helper used during diagnostics to show class balance.
+        """
         vc = df['label'].value_counts(dropna=False)
         print(f"{name} label counts:\n", vc.to_dict())
         print(f"{name} proportions:\n", (vc / vc.sum()).round(3).to_dict())
@@ -382,6 +391,12 @@ if len(counts) < 2 or counts.min() == 0:
             return ' '.join(words)
         return s + ' ' + random.choice(['Great product.', 'Would buy again.', 'Works as expected.'])
 
+    augment_text_simple_local.__doc__ = """Light-weight local augmentor used to synthesize samples.
+
+    It performs sentence shuffling, word swaps, or appends a short phrase to
+    create slightly varied copies for balancing purposes.
+    """
+
 
     synth_texts = [augment_text_simple_local(t) for t in real_df[text_col].sample(n=needed, replace=True, random_state=42).tolist()]
     synth_df = pd.DataFrame({text_col: synth_texts, label_col: [1] * len(synth_texts)})
@@ -617,13 +632,19 @@ def augment_text_simple(s):
     sentences = re.split(r'(?<=[.!?]) +', s)
     if len(sentences) > 1 and random.random() < 0.4:
         random.shuffle(sentences)
-        return ' '..join(sentences)
+        return ' '.join(sentences)
     words = s.split()
     if len(words) > 6 and random.random() < 0.4:
         i, j = random.sample(range(len(words)), 2)
         words[i], words[j] = words[j], words[i]
-        return ' '..join(words)
+        return ' '.join(words)
     return s + ' '
+
+augment_text_simple.__doc__ = """Simple augmentation used for oversampling minority class.
+
+Performs occasional sentence shuffling or word swaps to reduce duplicate
+examples when oversampling.
+"""
 
 
 # target per-class = max(len(real_train), len(fake_train))? We want balanced, so choose target = max(len(real_train), len(fake_train))  # 目标类别 = max(len(real_train), len(fake_train))？我们希望类别平衡，所以选择 target = max(len(real_train), len(fake_train))。
@@ -672,6 +693,10 @@ hf_val = Dataset.from_pandas(val_df.rename(columns={'review_text': 'text', 'is_f
 
 
 def tok_batch(examples):
+    """Tokenize a batch of examples using the global `tokenizer`.
+
+    Kept as a tiny wrapper so calling code can pass the function into HF map.
+    """
     return tokenizer(examples['text'], truncation=True, padding='max_length', max_length=256)
 
 

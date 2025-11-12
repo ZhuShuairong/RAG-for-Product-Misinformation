@@ -1,45 +1,34 @@
 # -*- coding: utf-8 -*-
-import pandas as pd
-import random
-from langchain_community.llms import Ollama
-from tqdm import tqdm
+"""
+
+Phase 1 — synthetic fake review generation.
+
+This module generates synthetic negative/fake reviews using LLM prompts and saves them to a JSON file.
+
+Input: Product data from 'data/sephora_data/product_info.csv'
+
+Processing: Uses Ollama LLM with gemma3:4b model to generate reviews based on predefined prompts, sampling products proportionally to their review counts.
+
+Output: Saves generated reviews to 'data/fake_reviews.json' with product_id, review text, and rating.
+
+"""
+
 import json
 import os
+import random
+import shutil
+import subprocess
+import sys
+
 import numpy as np
-import shutil, subprocess, sys
+import pandas as pd
+from langchain_community.llms import Ollama
+from tqdm import tqdm
 
+GENERATE_FAKE_REVIEWS = False
 
-# Load the product data
-csv_path = 'data/sephora_data/product_info.csv'
-df = pd.read_csv(csv_path)
+candidate_paths = ['data/fake_reviews.json', 'Workspace/fake_reviews.json', 'fake_reviews.json']
 
-
-# DEBUG: Inspect data integrity before processing
-print("DEBUG: Number of unique product_ids:", df['product_id'].nunique())
-print("DEBUG: Reviews column summary:")
-print(df['reviews'].describe())
-print("DEBUG: Sample of product_id and product_name:")
-print(df[['product_id', 'product_name']].head(10))
-print("DEBUG: product_id sample values:")
-print(df['product_id'].head(10).tolist())  # Confirms 'PXXXXXX' format
-
-
-# Clean reviews explicitly (handle any potential string issues, though not needed here)
-reviews_col = df['reviews'].astype(str).str.replace(',', '').str.strip()
-reviews_col = pd.to_numeric(reviews_col, errors='coerce').values
-reviews_col = np.nan_to_num(reviews_col, nan=0.0)  # Replace NaN with 0
-probabilities = reviews_col / (np.sum(reviews_col) + 1e-8)  # Avoid div-by-zero
-# If all zero, make uniform
-if np.sum(probabilities) == 0:
-    probabilities = np.ones(len(df)) / len(df)
-
-
-# OPTIONAL: For uniform sampling (better diversity, uncomment below)
-# probabilities = np.ones(len(df)) / len(df)
-
-
-# Define prompts for generating negative reviews with misinformation (currently 20 prompts)
-# Original prompts cleaned: Fancy quotes/dashes replaced with ASCII; removed artifacts
 prompts = [
     """
 You are a 45-year-old suburban mother, health-conscious, researches everything. Proper grammar, worried tone.
@@ -283,169 +272,174 @@ Snobby luxury comparison tone | LENGTH: 70-110 words
 ]
 
 
-# Toggle: if a fake_reviews.json already exists, optionally skip regeneration
-GENERATE_FAKE_REVIEWS = False  # set True to force regeneration even if file exists
-
-# Discover candidate paths for the fake reviews JSON and prefer ./data when available
-candidate_paths = ['data/fake_reviews.json', 'Workspace/fake_reviews.json', 'fake_reviews.json']
-existing_fake_path = next((p for p in candidate_paths if os.path.exists(p)), None)
-
-# If a fake reviews file exists outside of data/, prefer moving it into ./data for consistency
-if existing_fake_path and existing_fake_path != 'data/fake_reviews.json' and os.path.exists('data'):
-    try:
-        target_path = os.path.join('data', 'fake_reviews.json')
-        print(f"Moving existing fake reviews from {existing_fake_path} -> {target_path} for consistency.")
-        shutil.move(existing_fake_path, target_path)
-        existing_fake_path = target_path
-    except Exception as e:
-        print(f"Warning: failed to move {existing_fake_path} to data/: {e}. Will attempt to load from original path.")
-
-if existing_fake_path and not GENERATE_FAKE_REVIEWS:
-    print(f"Found existing fake reviews at {existing_fake_path}; loading and skipping generation (GENERATE_FAKE_REVIEWS={GENERATE_FAKE_REVIEWS}).")
-    try:
-        with open(existing_fake_path, 'r', encoding='utf-8') as f:
-            reviews = json.load(f)
-        print(f"Loaded {len(reviews)} reviews from {existing_fake_path}. Exiting without regenerating.")
-        sys.exit(0)
-    except Exception as e:
-        print(f"Failed to load existing fake reviews: {e}. Will attempt regeneration.")
-        existing_fake_path = None
-else:
-    print(f"Using {len(prompts)} prompts for generation.")
+def load_product_data(csv_path):
+    # Load product data / 加载产品数据
+    df = pd.read_csv(csv_path)
+    return df
 
 
-# Check Ollama CLI and model availability before initializing the LLM
-use_llm = True
-if shutil.which('ollama') is None:
-    print("ERROR: Ollama CLI not found. Install from https://ollama.ai and run 'ollama serve'. Aborting generation.")
-    use_llm = False
-else:
-    try:
-        result = subprocess.run(['ollama', 'list'], capture_output=True, text=True, timeout=10)
-        if result.returncode != 0:
-            print(f"ERROR: 'ollama list' failed: {result.stderr.strip()}")
-            use_llm = False
-        elif 'gemma3:4b' not in result.stdout:
-            print("ERROR: Ollama model gemma3:4b not available. Pull with: ollama pull gemma3:4b (then run 'ollama serve'). Aborting generation.")
-            use_llm = False
-        else:
-            print('Ollama CLI and gemma3:4b model found.')
-    except Exception as e:
-        print(f"ERROR checking Ollama: {e}. Aborting generation.")
+def inspect_data_integrity(df):
+    # Inspect data integrity / 检查数据完整性
+    print("DEBUG: Number of unique product_ids:", df['product_id'].nunique())
+    print("DEBUG: Reviews column summary:")
+    print(df['reviews'].describe())
+    print("DEBUG: Sample of product_id and product_name:")
+    print(df[['product_id', 'product_name']].head(10))
+    print("DEBUG: product_id sample values:")
+    print(df['product_id'].head(10).tolist())
+
+
+def clean_reviews_column(df):
+    # Clean reviews column and compute probabilities / 清理评论列并计算概率
+    reviews_col = df['reviews'].astype(str).str.replace(',', '').str.strip()
+    reviews_col = pd.to_numeric(reviews_col, errors='coerce').values
+    reviews_col = np.nan_to_num(reviews_col, nan=0.0)
+    probabilities = reviews_col / (np.sum(reviews_col) + 1e-8)
+    if np.sum(probabilities) == 0:
+        probabilities = np.ones(len(df)) / len(df)
+    return probabilities
+
+
+def move_existing_reviews(existing_fake_path):
+    # Move existing reviews to data/ if possible / 如果可能，将现有评论移动到data/
+    if existing_fake_path and existing_fake_path != 'data/fake_reviews.json' and os.path.exists('data'):
+        try:
+            target_path = os.path.join('data', 'fake_reviews.json')
+            print(f"Moving existing fake reviews from {existing_fake_path} -> {target_path} for consistency.")
+            shutil.move(existing_fake_path, target_path)
+            return target_path
+        except Exception as e:
+            print(f"Warning: failed to move {existing_fake_path} to data/: {e}. Will attempt to load from original path.")
+    return existing_fake_path
+
+
+def handle_existing_reviews(existing_fake_path, generate_flag):
+    # Handle existing reviews file / 处理现有评论文件
+    if existing_fake_path and not generate_flag:
+        print(f"Found existing fake reviews at {existing_fake_path}; loading and skipping generation (GENERATE_FAKE_REVIEWS={generate_flag}).")
+        try:
+            with open(existing_fake_path, 'r', encoding='utf-8') as f:
+                reviews = json.load(f)
+            print(f"Loaded {len(reviews)} reviews from {existing_fake_path}. Exiting without regenerating.")
+            sys.exit(0)
+        except Exception as e:
+            print(f"Failed to load existing fake reviews: {e}. Will attempt regeneration.")
+            return None
+    else:
+        print(f"Using {len(prompts)} prompts for generation.")
+        return None
+
+
+def check_ollama():
+    # Check Ollama CLI and model availability / 检查Ollama CLI和模型可用性
+    use_llm = True
+    if shutil.which('ollama') is None:
+        print("ERROR: Ollama CLI not found. Install from https://ollama.ai and run 'ollama serve'. Aborting generation.")
         use_llm = False
+    else:
+        try:
+            result = subprocess.run(['ollama', 'list'], capture_output=True, text=True, timeout=10)
+            if result.returncode != 0:
+                print(f"ERROR: 'ollama list' failed: {result.stderr.strip()}")
+                use_llm = False
+            elif 'gemma3:4b' not in result.stdout:
+                print("ERROR: Ollama model gemma3:4b not available. Pull with: ollama pull gemma3:4b (then run 'ollama serve'). Aborting generation.")
+                use_llm = False
+            else:
+                print('Ollama CLI and gemma3:4b model found.')
+        except Exception as e:
+            print(f"ERROR checking Ollama: {e}. Aborting generation.")
+            use_llm = False
 
-if not use_llm:
-    print("Generation requires a running Ollama server with gemma3:4b. Exiting.")
-    sys.exit(1)
+    if not use_llm:
+        print("Generation requires a running Ollama server with gemma3:4b. Exiting.")
+        sys.exit(1)
 
-# Initialize the LLM (only after checks)
-llm = Ollama(model="gemma3:4b", temperature=0.9, top_p=0.95, top_k=0)
-
-# List to store generated reviews
-reviews = []
+    # Initialize the LLM
+    llm = Ollama(model="gemma3:4b", temperature=0.9, top_p=0.95, top_k=0)
+    return llm
 
 
-# Generate 1000 reviews (but tqdm total=10 seems like a bug; fix to 1000)
-pbar = tqdm(range(1000), desc="Generating reviews")  # Fixed: total=1000
-last_review = ""
-unique_product_ids = set()  # DEBUG: Track uniqueness
-skipped = 0
-for i, _ in enumerate(pbar):
-    # Sample a product index based on probabilities
-    idx = np.random.choice(len(df), p=probabilities)
-    row = df.iloc[idx]
-    
-    # Validate product_id (always present and string)
-    product_id = str(row['product_id'])  # Keep as string - no int() needed
-    
-    # DEBUG: Log selections (first 20 for inspection)
-    if i < 20:
-        print(f"DEBUG ITER {i+1}: idx={idx}, product_id={product_id}, name={row['product_name'][:30]}...")
-    unique_product_ids.add(product_id)
-    
-    # Randomly select a prompt
-    prompt_template = random.choice(prompts)
-    
-    # Fill the prompt with product info - try-except for safety
-    try:
-        prompt = prompt_template.format(
-            product_name=row['product_name'],
-            variation_value=row.get('variation_value', ''),
-            ingredients=row.get('ingredients', ''),
-            highlights=row.get('highlights', ''),
-            primary_category=row['primary_category'],
-            secondary_category=row.get('secondary_category', ''),
-            tertiary_category=row.get('tertiary_category', '')
-        )
-    except KeyError as e:
-        print(f"WARNING: Missing key {e} in prompt for product {product_id}. Skipping.")
-        skipped += 1
-        pbar.set_postfix({"Skipped": skipped})
-        continue
-    except Exception as e:
-        print(f"Unexpected prompt error for {product_id}: {e}. Skipping.")
-        skipped += 1
-        pbar.set_postfix({"Skipped": skipped})
-        continue
-    
-    # Generate the review - try-except for LLM
-    try:
-        response = llm.invoke(prompt)
-        review_text = response.strip()
-    except Exception as e:
-        print(f"LLM error for product {product_id}: {e}. Using placeholder.")
-        review_text = "Sample negative review: This product disappointed with poor quality and misleading claims."
-    
-    # Clean the review text: remove tabs, newlines, quotes, and extra whitespace
-    review_text = ' '.join(review_text.split())  # Remove tabs, newlines, and multiple spaces
-    review_text = review_text.replace('"', '').replace("'", '')  # Remove quotation marks
-    if not review_text:  # Skip empty reviews
-        skipped += 1
-        pbar.set_postfix({"Skipped": skipped})
-        continue
-    last_review = review_text
-    
-    # Assign a low rating (1 or 2)
-    rating = random.choice([1, 2])
-    
-    # Append to list - product_id as string
-    reviews.append({
-        'product_id': product_id,  # String for JSON safety
-        'review': review_text,
-        'rating': rating
-    })
-    
-    # Update progress bar (truncated for brevity)
-    if i % 100 == 0:  # Update less frequently to avoid slowdown
-        pbar.set_postfix({
-            "Product": f"{row['product_name'][:20]}...",
-            "Unique IDs": len(unique_product_ids),
-            "Skipped": skipped
+def generate_reviews(df, probabilities, prompts, llm, num_reviews=1000):
+    # Generate synthetic reviews / 生成合成评论
+    reviews = []
+    pbar = tqdm(range(num_reviews), desc="Generating reviews")
+    unique_product_ids = set()
+    skipped = 0
+    for i, _ in enumerate(pbar):
+        # Sample a product index
+        idx = np.random.choice(len(df), p=probabilities)
+        row = df.iloc[idx]
+        product_id = str(row['product_id'])
+        if i < 20:
+            print(f"DEBUG ITER {i+1}: idx={idx}, product_id={product_id}, name={row['product_name'][:30]}...")
+        unique_product_ids.add(product_id)
+        # Select prompt
+        prompt_template = random.choice(prompts)
+        try:
+            prompt = prompt_template.format(
+                product_name=row['product_name'],
+                variation_value=row.get('variation_value', ''),
+                ingredients=row.get('ingredients', ''),
+                highlights=row.get('highlights', ''),
+                primary_category=row['primary_category'],
+                secondary_category=row.get('secondary_category', ''),
+                tertiary_category=row.get('tertiary_category', '')
+            )
+        except KeyError as e:
+            print(f"WARNING: Missing key {e} in prompt for product {product_id}. Skipping.")
+            skipped += 1
+            pbar.set_postfix({"Skipped": skipped})
+            continue
+        except Exception as e:
+            print(f"Unexpected prompt error for {product_id}: {e}. Skipping.")
+            skipped += 1
+            pbar.set_postfix({"Skipped": skipped})
+            continue
+        # Generate review
+        try:
+            response = llm.invoke(prompt)
+            review_text = response.strip()
+        except Exception as e:
+            print(f"LLM error for product {product_id}: {e}. Using placeholder.")
+            review_text = "Sample negative review: This product disappointed with poor quality and misleading claims."
+        # Clean review text
+        review_text = ' '.join(review_text.split())
+        review_text = review_text.replace('"', '').replace("'", '')
+        if not review_text:
+            skipped += 1
+            pbar.set_postfix({"Skipped": skipped})
+            continue
+        # Assign rating
+        rating = random.choice([1, 2])
+        reviews.append({
+            'product_id': product_id,
+            'review': review_text,
+            'rating': rating
         })
+        if i % 100 == 0:
+            pbar.set_postfix({
+                "Product": f"{row['product_name'][:20]}...",
+                "Unique IDs": len(unique_product_ids),
+                "Skipped": skipped
+            })
+    print(f"DEBUG: Generated {len(reviews)} reviews (skipped {skipped}), unique product_ids: {len(unique_product_ids)} out of {num_reviews} reviews")
+    if reviews:
+        print(f"DEBUG: Sample of first 5 product_ids in reviews: {[r['product_id'] for r in reviews[:5]]}")
+    else:
+        print("ERROR: No reviews generated. Check prompts and LLM.")
+    return reviews
 
 
-# DEBUG: Post-generation check
-print(f"DEBUG: Generated {len(reviews)} reviews (skipped {skipped}), unique product_ids: {len(unique_product_ids)} out of 1000 reviews")
-if reviews:
-    print(f"DEBUG: Sample of first 5 product_ids in reviews: {[r['product_id'] for r in reviews[:5]]}")
-else:
-    print("ERROR: No reviews generated. Check prompts and LLM.")
-
-
-# Save the reviews to a JSON file - with validation
-if existing_fake_path and not GENERATE_FAKE_REVIEWS:
-    print(f"Loaded reviews from {existing_fake_path}; skipping save (GENERATE_FAKE_REVIEWS={GENERATE_FAKE_REVIEWS}).")
-else:
-    # Decide output path: prefer ./data/fake_reviews.json
-    output_path = existing_fake_path if existing_fake_path else (os.path.join('data', 'fake_reviews.json') if os.path.exists('data') else 'Workspace/fake_reviews.json')
+def save_reviews(reviews, output_path):
+    # Save reviews to JSON / 保存评论到JSON
     if reviews:
         try:
             os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
-            with open(output_path, 'w', encoding='utf-8') as f:  # Explicit UTF-8 for JSON
+            with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(reviews, f, indent=4, ensure_ascii=False)
             print(f"Saved {len(reviews)} fake reviews to {output_path}")
-            
-            # Quick validation
+            # Validate
             with open(output_path, 'r', encoding='utf-8') as f:
                 loaded = json.load(f)
             print(f"JSON validation: Loaded {len(loaded)} entries successfully. Sample: {loaded[0]}")
@@ -453,3 +447,18 @@ else:
             print(f"ERROR saving JSON: {e}")
     else:
         print("No data to save.")
+
+
+if __name__ == "__main__":
+    csv_path = 'data/sephora_data/product_info.csv'
+    df = load_product_data(csv_path)
+    inspect_data_integrity(df)
+    probabilities = clean_reviews_column(df)
+    existing_fake_path = next((p for p in candidate_paths if os.path.exists(p)), None)
+    existing_fake_path = move_existing_reviews(existing_fake_path)
+    reviews = handle_existing_reviews(existing_fake_path, GENERATE_FAKE_REVIEWS)
+    if reviews is None:
+        llm = check_ollama()
+        reviews = generate_reviews(df, probabilities, prompts, llm)
+        output_path = existing_fake_path if existing_fake_path else (os.path.join('data', 'fake_reviews.json') if os.path.exists('data') else 'Workspace/fake_reviews.json')
+        save_reviews(reviews, output_path)

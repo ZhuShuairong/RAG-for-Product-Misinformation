@@ -1,9 +1,10 @@
-# Phase 4 - RAG Pipeline Integration
-# 第 4 阶段 - RAG 管道集成
-# This phase integrates the RAG (Retrieval-Augmented Generation) pipeline to enhance explainability for fake review detection. Now using RoBERTa for classification and GPT-2 for explanation generation.
-# 该阶段集成了 RAG（检索增强生成）管道，以增强假评论检测的可解释性。现在使用 RoBERTa 进行分类，使用 GPT-2 进行解释生成。
-# Depends on synthetic_test.csv from phase 1, model from phase 3, chroma_data from phase 2.
-# 依赖于第 1 阶段的 synthetic_test.csv、第 3 阶段的模型、第 2 阶段的 chroma_data。
+"""Phase 4 — RAG pipeline integration and evaluation.
+
+This module evaluates the trained classifier on the synthetic test set and
+integrates retrieval contexts for explainability. It expects artifacts from
+phases 1–3 (synthetic_test.csv, a saved RoBERTa model, and ChromaDB
+collections).
+"""
 
 # Initialize results storage  # 初始化结果存储
 roberta_predictions = []
