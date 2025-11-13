@@ -1,140 +1,97 @@
-import chromadb
-import pandas as pd
-from chromadb.config import Settings
-from typing import List, Dict
+#!/usr/bin/env python3
+"""
+insert_products.py (Chroma new API compatible version)
+适配 Chroma >= 0.5.0
+Usage:
+    python scripts/insert_products.py --products_csv data/products.csv --persist_dir chroma_db --batch_size 256
+"""
+import argparse
 import os
+import pandas as pd
+from sentence_transformers import SentenceTransformer
+import chromadb
+from tqdm import tqdm
+import numpy as np
 
 
-def initialize_chroma_db(persist_directory: str = "./chroma_db") -> chromadb.Collection:
-    """Initialize ChromaDB client and create/get collection"""
-    # Create persist directory if it doesn't exist
-    os.makedirs(persist_directory, exist_ok=True)
-    # Initialize ChromaDB with persistence
-    client = chromadb.PersistentClient(path=persist_directory)
-    # Create or get collection with cosine similarity
-    collection = client.get_or_create_collection(
-        name="product_database",
-        metadata={"hnsw:space": "cosine"}  # Cosine similarity for embeddings
-    )
-    print(f"Collection initialized: {collection.name}")
-    print(f"Current document count: {collection.count()}")
-    return collection
+def create_product_text(row):
+    parts = []
+    name = row.get('product_name')
+    brand = row.get('brand_name')
+    if pd.notna(name):
+        parts.append(f"{name}")
+    if pd.notna(brand):
+        parts.append(f"by {brand}")
+    if pd.notna(row.get('highlights', None)):
+        parts.append("Highlights: " + str(row.get('highlights')))
+    if pd.notna(row.get('ingredients', None)):
+        parts.append("Ingredients: " + str(row.get('ingredients')))
+    if pd.notna(row.get('primary_category', None)):
+        parts.append("Category: " + str(row.get('primary_category')))
+    if pd.notna(row.get('price_usd', None)):
+        parts.append("Price: $" + str(row.get('price_usd')))
+    if pd.notna(row.get('rating', None)):
+        parts.append("Rating: " + str(row.get('rating')))
+    return ". ".join(parts)
 
 
-def create_document_text(row: pd.Series) -> str:
-    """Create the document text field for embedding"""
-    # Handle NaN values
-    brand_name = row['brand_name'] if pd.notna(row['brand_name']) else ""
-    product_name = row['product_name'] if pd.notna(row['product_name']) else ""
-    highlights = row['highlights'] if pd.notna(row['highlights']) else ""
-    ingredients = row['ingredients'] if pd.notna(row['ingredients']) else ""
-    primary_cat = row['primary_category'] if pd.notna(row['primary_category']) else ""
-    secondary_cat = row['secondary_category'] if pd.notna(row['secondary_category']) else ""
-    tertiary_cat = row['tertiary_category'] if pd.notna(row['tertiary_category']) else ""
-    size = row['size'] if pd.notna(row['size']) else ""
-    # Build document text according to specified format
-    doc_parts = []
-    # Brand and product name
-    if brand_name or product_name:
-        doc_parts.append(f"{brand_name} {product_name}".strip())
-    # Highlights
-    if highlights:
-        doc_parts.append(f"{highlights}")
-    # Ingredients
-    if ingredients:
-        doc_parts.append(f"Ingredients: {ingredients}")
-    # Categories
-    categories = " > ".join(filter(None, [primary_cat, secondary_cat, tertiary_cat]))
-    if categories:
-        doc_parts.append(f"Categories: {categories}")
-    # Size
-    if size:
-        doc_parts.append(f"Size: {size}")
-    return ". ".join(doc_parts) + "."
+def insert_products_chroma(products_csv, persist_dir="chroma_db", batch_size=256, model_name="all-MiniLM-L6-v2"):
+    print("[INFO] loading products:", products_csv)
+    df = pd.read_csv(products_csv, dtype=str)
+    df = df.fillna("")
 
+    # 初始化向量模型
+    embedder = SentenceTransformer(model_name)
 
-def create_metadata(row: pd.Series) -> Dict:
-    """Create metadata dictionary with structured data"""
-    metadata = {
-        # Core identifiers
-        'product_id': str(row['product_id']),
-        'brand_name': str(row['brand_name']) if pd.notna(row['brand_name']) else "",
+    # ✅ 新版 Chroma 初始化方式
+    os.makedirs(persist_dir, exist_ok=True)
+    client = chromadb.PersistentClient(path=persist_dir)
+    collection = client.get_or_create_collection(name="products")
 
-        # Categories for filtering
-        'primary_category': str(row['primary_category']) if pd.notna(row['primary_category']) else "",
-        'secondary_category': str(row['secondary_category']) if pd.notna(row['secondary_category']) else "",
-        'tertiary_category': str(row['tertiary_category']) if pd.notna(row['tertiary_category']) else "",
+    # 批量插入
+    docs, metadatas, ids = [], [], []
+    for idx, row in tqdm(df.iterrows(), total=len(df), desc="Inserting products"):
+        pid = str(row.get("product_id") or f"prod_{idx}")
+        text = create_product_text(row)
+        meta = {
+            "product_id": pid,
+            "product_name": row.get("product_name", ""),
+            "brand_name": row.get("brand_name", ""),
+            "price_usd": row.get("price_usd", ""),
+            "rating": row.get("rating", "")
+        }
+        docs.append(text)
+        metadatas.append(meta)
+        ids.append(pid)
 
-        # Numerical features (ChromaDB requires specific types)
-        'price_usd': float(row['price_usd']) if pd.notna(row['price_usd']) else 0.0,
-        'rating': float(row['rating']) if pd.notna(row['rating']) else 0.0,
-        'reviews': int(row['reviews']) if pd.notna(row['reviews']) else 0,
-        'loves_count': int(row['loves_count']) if pd.notna(row['loves_count']) else 0,
-
-        # Boolean filters
-        'limited_edition': bool(row['limited_edition']) if pd.notna(row['limited_edition']) else False,
-        'new': bool(row['new']) if pd.notna(row['new']) else False,
-        'sephora_exclusive': bool(row['sephora_exclusive']) if pd.notna(row['sephora_exclusive']) else False,
-
-        # Product variations
-        'child_count': int(row['child_count']) if pd.notna(row['child_count']) else 0,
-        'child_max_price': float(row['child_max_price']) if pd.notna(row['child_max_price']) else 0.0,
-        'child_min_price': float(row['child_min_price']) if pd.notna(row['child_min_price']) else 0.0,
-    }
-    return metadata
-
-
-def insert_products(collection: chromadb.Collection, csv_path: str, batch_size: int = 100):
-    """Insert products from CSV into ChromaDB"""
-    # Load CSV
-    print(f"Loading products from {csv_path}...")
-    df = pd.read_csv(csv_path)
-    print(f"Loaded {len(df)} products")
-    # Prepare data for insertion
-    documents = []
-    metadatas = []
-    ids = []
-    print("Processing products...")
-    for idx, row in df.iterrows():
-        # Create document text
-        doc_text = create_document_text(row)
-        documents.append(doc_text)
-
-        # Create metadata
-        metadata = create_metadata(row)
-        metadatas.append(metadata)
-
-        # Create unique ID
-        ids.append(f"prod_{row['product_id']}")
-
-        # Insert in batches
-        if len(documents) >= batch_size:
+        if len(docs) >= batch_size:
+            emb = embedder.encode(docs, convert_to_numpy=True, show_progress_bar=False)
             collection.add(
-                documents=documents,
+                documents=docs,
                 metadatas=metadatas,
-                ids=ids
+                ids=ids,
+                embeddings=emb.tolist()
             )
-            print(f"Inserted batch of {len(documents)} products")
-            documents, metadatas, ids = [], [], []
-    # Insert remaining products
-    if documents:
+            docs, metadatas, ids = [], [], []
+
+    # 处理剩余
+    if docs:
+        emb = embedder.encode(docs, convert_to_numpy=True, show_progress_bar=False)
         collection.add(
-            documents=documents,
+            documents=docs,
             metadatas=metadatas,
-            ids=ids
+            ids=ids,
+            embeddings=emb.tolist()
         )
-        print(f"Inserted final batch of {len(documents)} products")
-    print(f"\nTotal products in database: {collection.count()}")
 
-
-def main():
-    # Initialize database
-    collection = initialize_chroma_db(persist_directory="./chroma_db")
-    # Insert products from CSV
-    csv_path = "./data/product_info.csv"
-    insert_products(collection, csv_path, batch_size=100)
-    print("\n✓ Database initialized and populated successfully!")
+    print(f"[INFO] ✅ inserted {len(df)} products into Chroma at {persist_dir}")
 
 
 if __name__ == "__main__":
-    main()
+    p = argparse.ArgumentParser()
+    p.add_argument("--products_csv", type=str, default="data/product_info.csv")
+    p.add_argument("--persist_dir", type=str, default="chroma_db")
+    p.add_argument("--batch_size", type=int, default=256)
+    p.add_argument("--model_name", type=str, default="all-MiniLM-L6-v2")
+    args = p.parse_args()
+    insert_products_chroma(args.products_csv, args.persist_dir, args.batch_size, args.model_name)

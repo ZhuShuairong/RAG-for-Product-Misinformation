@@ -1,82 +1,43 @@
+#!/usr/bin/env python3
 """
-Script to download Sephora Products and Skincare Reviews dataset from Kaggle
-Dataset: https://www.kaggle.com/datasets/nadyinky/sephora-products-and-skincare-reviews
-Uses kaggle.json from ./env/ folder
+download_sephora.py
+简单封装 kaggle dataset 下载（需预先配置 kaggle.json）
+Usage:
+    python scripts/download_sephora.py --dataset nadyinky/sephora-products-and-skincare-reviews --out_dir data
 """
-
+import argparse
 import os
+import shutil
 import sys
+from kaggle import api
+import zipfile
+import time
 
-
-def setup_kaggle_credentials():
-    """Set up Kaggle credentials from ./env/kaggle.json"""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    env_dir = os.path.join(script_dir, 'env')
-    kaggle_json_path = os.path.join(env_dir, 'kaggle.json')
-    if not os.path.exists(kaggle_json_path):
-        print(f"✗ Kaggle credentials not found at: {kaggle_json_path}")
-        print("\nPlease:")
-        print(f"1. Create an 'env' folder in the same directory as this script")
-        print(f"2. Download your kaggle.json from https://www.kaggle.com/me/account")
-        print(f"3. Place it at: {kaggle_json_path}")
-        return False
-    # Set environment variable to use custom config directory
-    os.environ['KAGGLE_CONFIG_DIR'] = env_dir
-    print(f"✓ Using Kaggle credentials from: {kaggle_json_path}")
-    return True
-
-
-def download_with_kaggle_api():
-    """Download using official Kaggle API"""
-    try:
-        import kaggle
-
-        # Authenticate (will use env/kaggle.json due to KAGGLE_CONFIG_DIR)
-        kaggle.api.authenticate()
-        print("✓ Authenticated with Kaggle API")
-        # Create data directory if it doesn't exist
-        os.makedirs('data', exist_ok=True)
-        # Download and unzip the dataset
-        dataset_name = 'nadyinky/sephora-products-and-skincare-reviews'
-        print(f"\nDownloading {dataset_name}...")
-        kaggle.api.dataset_download_files(
-            dataset_name,
-            path='data',
-            unzip=True
-        )
-        print("✓ Dataset downloaded successfully to 'data/' folder")
-        # List downloaded files
-        files = os.listdir('data')
-        print(f"\nDownloaded {len(files)} files:")
-        for file in sorted(files):
-            file_path = os.path.join('data', file)
-            size = os.path.getsize(file_path) / (1024 * 1024)  # Size in MB
-            print(f"  - {file} ({size:.2f} MB)")
+def download_dataset(dataset: str, out_dir: str = "data", force: bool = False):
+    os.makedirs(out_dir, exist_ok=True)
+    # check already present
+    expected_marker = os.path.join(out_dir, ".downloaded")
+    if os.path.exists(expected_marker) and not force:
+        print(f"[INFO] dataset already downloaded in {out_dir}. Use --force to redownload.")
         return True
-    except ImportError:
-        print("✗ kaggle package not found. Installing...")
-        os.system(f"{sys.executable} -m pip install kaggle")
-        print("\nPlease run the script again after installation.")
-        return False
+    try:
+        print(f"[INFO] Downloading {dataset} into {out_dir} ...")
+        api.dataset_download_files(dataset, path=out_dir, unzip=True, quiet=False)
+        # create marker
+        with open(expected_marker, "w") as f:
+            f.write(f"downloaded: {time.ctime()}\n")
+        print("[INFO] Download finished.")
+        return True
     except Exception as e:
-        print(f"✗ Error: {e}")
+        print("[ERROR] Download failed:", e)
         return False
-
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("Kaggle Dataset Downloader")
-    print("Dataset: Sephora Products and Skincare Reviews")
-    print("=" * 60)
-    # Set up credentials from ./env/kaggle.json
-    if not setup_kaggle_credentials():
-        sys.exit(1)
-    # Download with Kaggle API
-    success = download_with_kaggle_api()
-    if success:
-        print("\n" + "=" * 60)
-        print("✓ Download complete!")
-        print("=" * 60)
-    else:
-        print("\n✗ Download failed. Please check your Kaggle credentials.")
+    p = argparse.ArgumentParser()
+    p.add_argument("--dataset", type=str, default="nadyinky/sephora-products-and-skincare-reviews")
+    p.add_argument("--out_dir", type=str, default="data")
+    p.add_argument("--force", action="store_true")
+    args = p.parse_args()
+    ok = download_dataset(args.dataset, args.out_dir, args.force)
+    if not ok:
         sys.exit(1)
