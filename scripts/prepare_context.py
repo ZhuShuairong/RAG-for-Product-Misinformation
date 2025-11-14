@@ -3,7 +3,7 @@
 prepare_context.py
 从 reviews CSV 生成 streaming JSONL，每条包含 context 信息与 pseudo-label
 Usage:
-    python scripts/prepare_context.py --input_dir data --out_file data/reviews_context.jsonl --max_rows 100000
+    python scripts/prepare_context.py --input_dir data --out_file data/reviews_context.jsonl
 """
 import argparse
 import os

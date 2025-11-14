@@ -1,0 +1,11 @@
+numpy
+pandas
+tqdm
+sentence-transformers>=2.2.2
+chromadb>=0.3.25
+torch>=1.12.0
+transformers>=4.30.0
+datasets
+scikit-learn
+kaggle
+accelerate

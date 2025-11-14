@@ -1,0 +1,14 @@
+python scripts/download_sephora.py --dataset nadyinky/sephora-products-and-skincare-reviews --out_dir data
+
+python scripts/prepare_context.py --input_dir data --out_file data/reviews_context.jsonl
+
+python scripts/insert_products.py --products_csv data/product_info.csv --persist_dir chroma_db --batch_size 256
+
+python scripts/generate_pseudo_labels.py --in_file data/reviews_context.jsonl --out_file data/reviews_with_labels.jsonl --top_k 3
+
+python scripts/generate_synthetic_fakes.py --in_file data/reviews_with_labels.jsonl --out_fake_file data/synthetic_fake_reviews.jsonl --out_train_file data/train_augmented.jsonl --ratio 0.5 --model llama3.2:3b
+
+
+python scripts/train_classifier.py --train_file data/reviews_with_labels.jsonl --model_name roberta-base --output_dir models/roberta_fake --epoch 2
+
+python scripts/evaluate.py --model_dir models/roberta_fake --test_file data/reviews_with_labels.jsonl

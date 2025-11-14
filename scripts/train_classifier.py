@@ -17,24 +17,26 @@ def load_jsonl(file_path, max_rows=None):
             rows.append(json.loads(line))
     return rows
 
+
 def prepare_examples(rows, max_retrieved_chars=400):
     exs = []
     for r in rows:
-        ctx = r.get("context","")
-        # join retrieved docs if exist
+        ctx = r.get("context", "")
         retrieved = r.get("retrieved", [])
-        retrieved_text = " ".join([d.get("document","")[:max_retrieved_chars] for d in retrieved])
+        retrieved_text = " ".join([d.get("document", "")[:max_retrieved_chars] for d in retrieved])
         text = ctx + " || Retrieved: " + retrieved_text
-        label = r.get("pseudo_label_v2") or r.get("pseudo_label") or "unknown"
-        # map to numeric classes: fake/factual_error -> 1, real/consistent -> 0, unknown/suspicious -> 2
-        if label in ["fake", "factual_error"]:
+        label = r.get("pseudo_label_v2")  # Now using the new pseudo_label_v2 field
+
+        # Only include real and fake reviews
+        if label == "fake":
             y = 1
-        elif label in ["real", "consistent"]:
+        elif label == "real":
             y = 0
-        else:
-            y = 2
+        else:  # label is unknown
+            continue  # Skip unknowns
         exs.append({"text": text, "label": y})
     return exs
+
 
 def compute_metrics(p):
     preds = np.argmax(p.predictions, axis=1)

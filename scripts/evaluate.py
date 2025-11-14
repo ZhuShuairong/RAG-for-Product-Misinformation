@@ -2,7 +2,7 @@
 """
 evaluate.py
 Usage:
-    python scripts/evaluate.py --model_dir models/roberta_fake --test_file data/reviews_with_labels.jsonl --max_rows 5000
+    python scripts/evaluate.py --model_dir models/roberta_fake --test_file data/reviews_with_labels.jsonl
 """
 import argparse
 import json
@@ -21,15 +21,14 @@ def load_examples(file_path, max_rows=None):
             ctx = j.get("context","")
             retrieved_text = " ".join([d.get("document","")[:400] for d in j.get("retrieved", [])])
             text = ctx + " || Retrieved: " + retrieved_text
-            label = j.get("pseudo_label_v2") or j.get("pseudo_label") or "unknown"
-            if label in ["fake", "factual_error"]:
+            label = j.get("pseudo_label_v2")  # Using pseudo_label_v2 for evaluation
+            if label == "fake":
                 y = 1
-            elif label in ["real", "consistent"]:
-                y = 0
             else:
-                y = 2
+                y = 0  # real label
             exs.append((text, y))
     return exs
+
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
