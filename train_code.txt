@@ -8,8 +8,12 @@ python scripts/insert_products.py --products_csv data/product_info.csv --persist
 
 python scripts/generate_pseudo_labels.py --in_file data/reviews_context.jsonl --out_file data/reviews_with_labels.jsonl --top_k 3
 
-python scripts/generate_synthetic_fakes.py --in_file data/reviews_with_labels.jsonl --out_fake_file data/synthetic_fake_reviews.jsonl --out_train_file data/train_augmented.jsonl --ratio 0.34 --model llama3.2:3b
+python scripts/create_small_dataset.py --input_file data/reviews_with_labels.jsonl --output_file data/reviews_with_labels_small.jsonl --ratio_real_to_fake 2.0
+
+python scripts/generate_synthetic_fakes.py --in_file data/reviews_with_labels.jsonl --out_fake_file data/synthetic_fake_reviews.jsonl --out_train_file data/train_augmented.jsonl --model llama3.2:3b --ollama_ratio 0.3 --ollama_combine_ratio 1 --online_troll_behavior
 
 python scripts/train_classifier.py --train_file data/reviews_with_labels.jsonl --model_name roberta-base --output_dir models/roberta_fake --epoch 2
+python scripts/train_classifier.py --train_file data/reviews_with_labels_small.jsonl --model_name roberta-base --output_dir models/roberta_fake --epoch 2
 
 python scripts/evaluate.py --model_dir models/roberta_fake --test_file data/reviews_with_labels.jsonl
+python scripts/evaluate.py --model_dir models/roberta_fake --test_file data/reviews_with_labels_small.jsonl

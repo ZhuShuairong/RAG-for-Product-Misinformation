@@ -77,7 +77,7 @@ def create_product_text(row):
 def insert_products_chroma(products_csv, persist_dir="chroma_db", batch_size=256, model_name="all-MiniLM-L6-v2"):
     """将产品信息插入到 Chroma DB"""
     print("[INFO] loading products:", products_csv)
-    df = pd.read_csv(products_csv, dtype=str)
+    df = pd.read_csv(products_csv, dtype=str, low_memory=False)
     df = df.fillna("")  # 处理缺失值，确保不会出错
 
     # 初始化 Chroma 客户端
@@ -102,29 +102,29 @@ def insert_products_chroma(products_csv, persist_dir="chroma_db", batch_size=256
             "product_name": row.get("product_name", ""),
             "brand_id": row.get("brand_id", ""),
             "brand_name": row.get("brand_name", ""),
-            "loves_count": row.get("love_count", 0),
+            # "loves_count": row.get("love_count", 0),
             "rating": row.get("rating", ""),
             "reviews": row.get("reviews", 0),
             "size": row.get("size", ""),
-            "variation_type": row.get("variation_type", ""),
-            "variation_value": row.get("variation_value", ""),
-            "variation_desc": row.get("variation_desc", ""),
-            "ingredients": row.get("ingredients", ""),
+            # "variation_type": row.get("variation_type", ""),
+            # "variation_value": row.get("variation_value", ""),
+            # "variation_desc": row.get("variation_desc", ""),
+            # "ingredients": row.get("ingredients", ""),
             "price_usd": row.get("price_usd", 0),
             "value_price_usd": row.get("value_price_usd") if row.get("value_price_usd") else row.get("price_usd", 0),
             "sale_price_usd": row.get("sale_price_usd") if row.get("sale_price_usd") else row.get("price_usd", 0),
-            "limited_edition": row.get("limited_edition", 0),
-            "new": row.get("new", 0),
+            # "limited_edition": row.get("limited_edition", 0),
+            # "new": row.get("new", 0),
             "online_only": row.get("online_only", 0),
-            "out_of_stock": row.get("out_of_stock", 0),
-            "sephora_exclusive": row.get("sephora_exclusive", 0),
+            # "out_of_stock": row.get("out_of_stock", 0),
+            # "sephora_exclusive": row.get("sephora_exclusive", 0),
             "highlights": row.get("highlights", ""),
-            "primary_category": row.get("primary_category", ""),
-            "secondary_category": row.get("secondary_category", ""),
-            "tertiary_category": row.get("tertiary_category", ""),
-            "child_count": row.get("child_count", 0),
-            "child_max_price": row.get("child_max_price", 0),
-            "child_min_price": row.get("child_min_price", 0)
+            # "primary_category": row.get("primary_category", ""),
+            # "secondary_category": row.get("secondary_category", ""),
+            # "tertiary_category": row.get("tertiary_category", ""),
+            # "child_count": row.get("child_count", 0),
+            # "child_max_price": row.get("child_max_price", 0),
+            # "child_min_price": row.get("child_min_price", 0)
         }
 
         # 将生成的描述作为 "documents"，产品元数据作为 "meta"

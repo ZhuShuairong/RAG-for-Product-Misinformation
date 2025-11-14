@@ -5,6 +5,7 @@ import json
 import pandas as pd
 from tqdm import tqdm
 
+
 def find_review_files(input_dir: str):
     """查找并返回所有评论 CSV 文件"""
     files = sorted(glob.glob(os.path.join(input_dir, "reviews*.csv")))
@@ -12,6 +13,7 @@ def find_review_files(input_dir: str):
         # 如果没有找到匹配的文件，回退到所有 CSV 文件
         files = sorted(glob.glob(os.path.join(input_dir, "*.csv")))
     return files
+
 
 def build_context_text(row, product_lookup=None):
     """构建评论的上下文文本"""
@@ -30,6 +32,7 @@ def build_context_text(row, product_lookup=None):
         parts.append("Product summary: " + product_lookup[pid])
     return " | ".join([p for p in parts if p])
 
+
 def process_files(files, out_file, product_lookup=None, max_rows=None):
     """处理所有文件并生成 JSONL 格式的数据"""
     total_written = 0
@@ -37,7 +40,7 @@ def process_files(files, out_file, product_lookup=None, max_rows=None):
         for fpath in files:
             print(f"[INFO] reading {fpath}")
             # 逐块读取 CSV 文件以避免内存溢出
-            for chunk in pd.read_csv(fpath, chunksize=10000, iterator=True, encoding='utf-8', dtype=str):
+            for chunk in pd.read_csv(fpath, chunksize=10000, iterator=True, encoding='utf-8', dtype=str, low_memory=False):
                 # 转换并处理数据
                 for _, row in chunk.iterrows():
                     if max_rows is not None and total_written >= max_rows:
@@ -57,14 +60,14 @@ def process_files(files, out_file, product_lookup=None, max_rows=None):
                             "total_feedback_count": rowd.get("total_feedback_count", None),
                             "total_neg_feedback_count": rowd.get("total_neg_feedback_count", None),
                             "total_pos_feedback_count": rowd.get("total_pos_feedback_count", None),
-                            "submission_time": rowd.get("submission_time", None),
-                            "review_text": rowd.get("review_text", None),
-                            "review_title": rowd.get("review_title", None),
-                            "skin_tone": rowd.get("skin_tone", None),
-                            "eye_color": rowd.get("eye_color", None),
-                            "skin_type": rowd.get("skin_type", None),
-                            "hair_color": rowd.get("hair_color", None),
-                            "product_id": rowd.get("product_id", None)
+                            # "submission_time": rowd.get("submission_time", None),
+                            # "review_text": rowd.get("review_text", None),
+                            # "review_title": rowd.get("review_title", None),
+                            # "skin_tone": rowd.get("skin_tone", None),
+                            # "eye_color": rowd.get("eye_color", None),
+                            # "skin_type": rowd.get("skin_type", None),
+                            # "hair_color": rowd.get("hair_color", None),
+                            # "product_id": rowd.get("product_id", None)
                         },
                         # 初始标签为 None，后续会在 generate_pseudo_labels.py 中标注
                         "pseudo_label": None
@@ -73,6 +76,7 @@ def process_files(files, out_file, product_lookup=None, max_rows=None):
                     total_written += 1
     print(f"[INFO] completed writing {total_written} entries to {out_file}")
     return total_written
+
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
@@ -86,11 +90,11 @@ if __name__ == "__main__":
     print("[INFO] found files:", files[:5])
     product_lookup = {}
     if os.path.exists(args.products_csv):
-        dfp = pd.read_csv(args.products_csv, dtype=str)
+        dfp = pd.read_csv(args.products_csv, dtype=str, low_memory=False)
         for _, r in dfp.iterrows():
             pid = r.get("product_id")
             # 创建简短的产品摘要
-            prod_summary = f"{r.get('product_name','')} by {r.get('brand_name','')}. Highlights: {r.get('highlights','')}. Ingredients: {r.get('ingredients','')}"
+            prod_summary = f"{r.get('product_name', '')} by {r.get('brand_name', '')}. Highlights: {r.get('highlights', '')}. Ingredients: {r.get('ingredients', '')}"
             product_lookup[pid] = prod_summary
         print(f"[INFO] loaded {len(product_lookup)} products for join")
     process_files(files, args.out_file, product_lookup, args.max_rows)

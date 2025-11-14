@@ -13,6 +13,7 @@ from kaggle import api
 import zipfile
 import time
 
+
 def download_dataset(dataset: str, out_dir: str = "data", force: bool = False):
     os.makedirs(out_dir, exist_ok=True)
     # check already present
@@ -31,6 +32,7 @@ def download_dataset(dataset: str, out_dir: str = "data", force: bool = False):
     except Exception as e:
         print("[ERROR] Download failed:", e)
         return False
+
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
