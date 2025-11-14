@@ -1,19 +1,34 @@
+# 1 Set up environment
 pip install --upgrade -r ./requirements.txt
 
+# 2 Download and prepare data
 python scripts/download_sephora.py --dataset nadyinky/sephora-products-and-skincare-reviews --out_dir data
 
+# 3 Prepare context for reviews
 python scripts/prepare_context.py --input_dir data --out_file data/reviews_context.jsonl
 
+# 4 Insert product information into vector database
 python scripts/insert_products.py --products_csv data/product_info.csv --persist_dir chroma_db --batch_size 256
 
+# 5 Generate pseudo labels for reviews
 python scripts/generate_pseudo_labels.py --in_file data/reviews_context.jsonl --out_file data/reviews_with_labels.jsonl --top_k 3
 
-python scripts/create_small_dataset.py --input_file data/reviews_with_labels.jsonl --output_file data/reviews_with_labels_small.jsonl --ratio_real_to_fake 2.0
+# 6 (Selected experiments) Create train/test dataset
 
+# 6.1 (Selected experiments) Create a smaller dataset for quick experimentation
+python scripts/create_small_dataset.py --input_file data/reviews_with_labels.jsonl --output_file data/reviews_with_labels_small.jsonl --ratio_real_to_fake 1.0 --test_ratio 0.1
+
+# 6.2 (Alternative) Use ollama to generate synthetic fake reviews
 python scripts/generate_synthetic_fakes.py --in_file data/reviews_with_labels.jsonl --out_fake_file data/synthetic_fake_reviews.jsonl --out_train_file data/train_augmented.jsonl --model llama3.2:3b --ollama_ratio 0.3 --ollama_combine_ratio 1 --online_troll_behavior
 
+# 7 Train and evaluate classifiers
+# 7.1
 python scripts/train_classifier.py --train_file data/reviews_with_labels.jsonl --model_name roberta-base --output_dir models/roberta_fake --epoch 2
-python scripts/train_classifier.py --train_file data/reviews_with_labels_small.jsonl --model_name roberta-base --output_dir models/roberta_fake --epoch 2
-
 python scripts/evaluate.py --model_dir models/roberta_fake --test_file data/reviews_with_labels.jsonl
+# 7.2
+python scripts/train_classifier.py --train_file data/reviews_with_labels_small.jsonl --model_name roberta-base --output_dir models/roberta_fake --epoch 2
 python scripts/evaluate.py --model_dir models/roberta_fake --test_file data/reviews_with_labels_small.jsonl
+# 7.3
+python scripts/train_classifier.py --train_file data/reviews_with_labels_small_train.jsonl --model_name roberta-base --output_dir models/roberta_fake --epoch 10
+python scripts/evaluate.py --model_dir models/roberta_fake --test_file data/reviews_with_labels_small_test.jsonl
+

@@ -27,9 +27,9 @@ def prepare_examples(rows, max_retrieved_chars=None):
         label = r.get("pseudo_label")  # Get label directly from data
 
         if label == "fake":
-            y = 1
+            y = 0  # Fake = False = 0
         elif label == "real":
-            y = 0
+            y = 1  # Real = True = 1
         else:
             continue  # Skip if label is unknown
 
