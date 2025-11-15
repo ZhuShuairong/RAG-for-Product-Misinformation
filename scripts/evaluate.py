@@ -66,7 +66,12 @@ def evaluate_model(model_dir, test_file, max_rows=None):
         )
 
     # 输出评估报告
-    print(classification_report(y_true, y_pred, digits=4))
+    print(classification_report(
+        y_true,  # 真实标签
+        y_pred,  # 预测标签
+        digits=4,  # 小数点后四位
+        zero_division=0,  # 避免除零错误
+    ))
 
 
 if __name__ == "__main__":

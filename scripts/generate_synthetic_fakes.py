@@ -5,8 +5,7 @@ from pathlib import Path
 import copy
 from tqdm import tqdm
 import ollama  # Local LLM client for Ollama model
-import chromadb
-from chromadb.config import Settings
+from build_retriever import Retriever
 
 
 # ------------------------------
@@ -42,22 +41,26 @@ def save_jsonl(path, records):
 
 def get_field(rec, key, default=None):
     """Get field from rec or rec["meta"]"""
-    if key in rec and rec[key] not in (None, ""):
-        return rec[key]
-    meta = rec.get("meta", {})
-    if isinstance(meta, dict) and key in meta and meta[key] not in (None, ""):
-        return meta[key]
+    # Check if rec is a dictionary before calling `get`
+    if isinstance(rec, dict):
+        if key in rec and rec[key] not in (None, ""):
+            return rec[key]
+        meta = rec.get("meta", {})
+        if isinstance(meta, dict) and key in meta and meta[key] not in (None, ""):
+            return meta[key]
     return default
 
 
 def extract_review_text(rec):
-    """Extract review_text string"""
-    txt = get_field(rec, "review_text", None)
-    if txt:
-        return str(txt)
-    # fallback to context
-    ctx = rec.get("context", "")
-    return str(ctx)
+    """Extract the review text from the record."""
+    # Ensure that rec is a dictionary and extract the review text
+    if isinstance(rec, dict):
+        ctx = rec.get("context", "")
+    elif isinstance(rec, str):
+        ctx = rec  # In case rec is a string, we return it as the context
+    else:
+        ctx = ""  # Default case if neither string nor dict
+    return ctx
 
 
 def extract_product_name(rec, fallback="a skincare product"):
@@ -82,41 +85,6 @@ def split_real_fake(records, label_field="pseudo_label"):
         elif label in ("fake", 1, "1"):
             fake.append(r)
     return real, fake
-
-
-# ------------------------------
-# Product info retrieval from ChromaDB
-# ------------------------------
-
-class Retriever:
-    def __init__(self, persist_dir="chroma_db", model_dir="./models/all-MiniLM-L6-v2"):
-        # Load the model from the local directory
-        self.client = chromadb.PersistentClient(path=persist_dir)
-        self.collection = self.client.get_collection("products")
-
-    def retrieve(self, query: str, top_k: int = 3):
-        """
-        Retrieve top_k relevant documents from ChromaDB based on the query.
-
-        Args:
-            query (str): The search query (e.g., product review or description).
-            top_k (int): The number of top results to return.
-
-        Returns:
-            list: A list of dictionaries containing product information.
-        """
-        # Query ChromaDB for the top_k most relevant documents and their metadata
-        res = self.collection.query(query_embeddings=[query], n_results=top_k, include=["documents", "metadatas"])
-
-        # Process the response to extract the documents and their corresponding metadata
-        docs = []
-        for d, m, id_ in zip(res.get("documents", [[]])[0], res.get("metadatas", [[]])[0], res.get("ids", [[]])[0]):
-            docs.append({
-                "id": id_,
-                "document": d,
-                "metadata": m  # The metadata contains all product-related information
-            })
-        return docs
 
 
 # ------------------------------
@@ -163,22 +131,22 @@ Return ONLY the review text, nothing else.
 
 
 def generate_fake_review_with_ollama(real_rec, fake_rec, model_name, retriever):
-    """Call Ollama to get one fake review"""
-    real_text = extract_review_text(real_rec)
-    fake_style_text = extract_review_text(fake_rec)
+    """Generate one fake review using Ollama and return it with product metadata"""
+    # Retrieve product metadata from ChromaDB
+    product_meta = retriever.retrieve(real_rec["context"], top_k=1)[0]["metadata"]
 
-    # Retrieve product meta from ChromaDB based on real_rec
-    product_meta = retriever.retrieve(real_text, top_k=1)[0]["metadata"]
-
-    # Build prompt with product information and review text
-    prompt = build_prompt(real_text, fake_style_text, product_meta)
-
-    resp = ollama.chat(  # call local model
+    # Generate a fake review with Ollama (assumed)
+    prompt = build_prompt(real_rec["context"], fake_rec["context"], product_meta)
+    resp = ollama.chat(
         model=model_name,
         messages=[{"role": "user", "content": prompt}],
     )
-    content = resp.get("message", {}).get("content", "").strip()
-    return content or fake_style_text  # fallback to style text if empty
+
+    # Assuming the response contains the generated fake review
+    ollama_fake_review = resp.get("message", {}).get("content", "").strip()
+
+    # Return both the generated review and product metadata
+    return {"review_text": ollama_fake_review, "meta": product_meta}
 
 
 # ------------------------------
@@ -269,22 +237,25 @@ def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model
     synthetic_records = []
 
     # Number of fake reviews generated by combining fake reviews and Ollama generated fake reviews
-    fake_reviews_needed = n_samples // ollama_combine_ratio
+    fake_reviews_needed = n_samples // ollama_combine_ratio if ollama_combine_ratio != 0 else 0
 
     print(f"[INFO] Generating {n_samples} fake reviews with Ollama and {fake_reviews_needed} fake reviews by combining with existing fake reviews.")
 
-    for step in tqdm(range(n_samples), desc="Generating synthetic fake reviews"):
+    for step in tqdm(range(n_samples), desc="Generating synthetic fake reviews", total=n_samples):
         # Generate fake review by randomly choosing real and fake samples
         real_rec = random.choice(real_reviews)
         fake_rec = random.choice(fake_reviews)
 
         # 1. Generate one fake review using Ollama
-        ollama_fake = generate_fake_review_with_ollama(real_rec, fake_rec, model_name, retriever)
+        ollama_fake_response = generate_fake_review_with_ollama(real_rec, fake_rec, model_name, retriever)
+        ollama_fake = ollama_fake_response["review_text"]
+        product_meta = ollama_fake_response["meta"]
 
         # Create a new record based on real_rec skeleton (Ollama generated fake review)
         new_rec_ollama = copy.deepcopy(real_rec)
         new_rec_ollama["review_text"] = ollama_fake
         new_rec_ollama["pseudo_label"] = "fake"  # Use original label field
+        new_rec_ollama["meta"] = product_meta  # Add metadata from the generated fake review
 
         # Generate random review-related information
         random_info = generate_random_review_info()
@@ -302,13 +273,14 @@ def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model
                 synthetic_records.append(new_rec_ollama)
 
         # 2. Combine existing fake reviews with the generated review for another fake review
-        if step % ollama_combine_ratio == 0:
+        if ollama_combine_ratio != 0 & step % ollama_combine_ratio == 0:
             # combined_fake = augment_fake_review(extract_review_text(fake_rec))
             combined_fake = augment_fake_review(extract_review_text(ollama_fake))
 
             new_rec_combined = copy.deepcopy(real_rec)
             new_rec_combined["review_text"] = combined_fake
             new_rec_combined["pseudo_label"] = "fake"  # Use original label field
+            new_rec_ollama["meta"] = product_meta  # Add metadata from the generated fake review
 
             # Generate random review-related information
             random_info = generate_random_review_info()
@@ -317,7 +289,7 @@ def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model
             synthetic_records.append(new_rec_combined)
 
             if online_troll_behavior and step % 1000 == 0:
-                for _ in range(random.randint(0, 100)):
+                for _ in range(random.randint(0, 50)):
                     combined_fake = augment_fake_review(extract_review_text(ollama_fake))
                     new_rec_combined = copy.deepcopy(real_rec)
                     new_rec_combined["review_text"] = combined_fake
@@ -341,7 +313,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="llama3.2:3b", help="Ollama model name to use.")
     parser.add_argument("--ollama_ratio", type=float, default=1.0, help="Ratio of Ollama generated fake reviews to original real reviews.")
     parser.add_argument("--ollama_combine_ratio", type=int, default=1, help="Ratio of combining existing fake reviews to Ollama generated reviews. E.g., 2 means for every 2 Ollama reviews, generate 1 combined fake review.")
-    parser.add_argument("--online_troll_behavior", action="store_true", help="Simulate online troll behavior by adding more duplicate synthetic reviews.")
+    parser.add_argument("--online_troll_behavior", action="store_true", help="Simulate online troll behavior by adding more duplicate synthetic reviews.", default=False)
     args = parser.parse_args()
 
     in_path = Path(args.in_file)
