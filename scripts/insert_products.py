@@ -24,52 +24,52 @@ def create_product_text(row):
         parts.append(f"Brand ID: {str(row.get('brand_id'))}")
 
     # 产品详细信息
-    if pd.notna(row.get('loves_count', None)):
-        parts.append(f"Loves Count: {str(row.get('loves_count'))}")
+    # if pd.notna(row.get('loves_count', None)):
+    #     parts.append(f"Loves Count: {str(row.get('loves_count'))}")
     if pd.notna(row.get('rating', None)):
         parts.append(f"Rating: {str(row.get('rating'))}")
     if pd.notna(row.get('reviews', None)):
         parts.append(f"Number of Reviews: {str(row.get('reviews'))}")
     if pd.notna(row.get('size', None)):
         parts.append(f"Size: {str(row.get('size'))}")
-    if pd.notna(row.get('variation_type', None)):
-        parts.append(f"Variation Type: {str(row.get('variation_type'))}")
-    if pd.notna(row.get('variation_value', None)):
-        parts.append(f"Variation Value: {str(row.get('variation_value'))}")
-    if pd.notna(row.get('variation_desc', None)):
-        parts.append(f"Variation Description: {str(row.get('variation_desc'))}")
-    if pd.notna(row.get('ingredients', None)):
-        parts.append(f"Ingredients: {str(row.get('ingredients'))}")
+    # if pd.notna(row.get('variation_type', None)):
+    #     parts.append(f"Variation Type: {str(row.get('variation_type'))}")
+    # if pd.notna(row.get('variation_value', None)):
+    #     parts.append(f"Variation Value: {str(row.get('variation_value'))}")
+    # if pd.notna(row.get('variation_desc', None)):
+    #     parts.append(f"Variation Description: {str(row.get('variation_desc'))}")
+    # if pd.notna(row.get('ingredients', None)):
+    #     parts.append(f"Ingredients: {str(row.get('ingredients'))}")
     if pd.notna(row.get('price_usd', None)):
         parts.append(f"Price: ${str(row.get('price_usd'))}")
     if pd.notna(row.get('value_price_usd', None)):
         parts.append(f"Value Price: ${str(row.get('value_price_usd'))}")
     if pd.notna(row.get('sale_price_usd', None)):
         parts.append(f"Sale Price: ${str(row.get('sale_price_usd'))}")
-    if pd.notna(row.get('limited_edition', None)):
-        parts.append(f"Limited Edition: {str(row.get('limited_edition'))}")
-    if pd.notna(row.get('new', None)):
-        parts.append(f"New: {str(row.get('new'))}")
+    # if pd.notna(row.get('limited_edition', None)):
+    #     parts.append(f"Limited Edition: {str(row.get('limited_edition'))}")
+    # if pd.notna(row.get('new', None)):
+    #     parts.append(f"New: {str(row.get('new'))}")
     if pd.notna(row.get('online_only', None)):
         parts.append(f"Online Only: {str(row.get('online_only'))}")
-    if pd.notna(row.get('out_of_stock', None)):
-        parts.append(f"Out of Stock: {str(row.get('out_of_stock'))}")
-    if pd.notna(row.get('sephora_exclusive', None)):
-        parts.append(f"Sephora Exclusive: {str(row.get('sephora_exclusive'))}")
+    # if pd.notna(row.get('out_of_stock', None)):
+    #     parts.append(f"Out of Stock: {str(row.get('out_of_stock'))}")
+    # if pd.notna(row.get('sephora_exclusive', None)):
+    #     parts.append(f"Sephora Exclusive: {str(row.get('sephora_exclusive'))}")
     if pd.notna(row.get('highlights', None)):
         parts.append(f"Highlights: {str(row.get('highlights'))}")
-    if pd.notna(row.get('primary_category', None)):
-        parts.append(f"Primary Category: {str(row.get('primary_category'))}")
-    if pd.notna(row.get('secondary_category', None)):
-        parts.append(f"Secondary Category: {str(row.get('secondary_category'))}")
-    if pd.notna(row.get('tertiary_category', None)):
-        parts.append(f"Tertiary Category: {str(row.get('tertiary_category'))}")
-    if pd.notna(row.get('child_count', None)):
-        parts.append(f"Child Count: {str(row.get('child_count'))}")
-    if pd.notna(row.get('child_max_price', None)):
-        parts.append(f"Child Max Price: ${str(row.get('child_max_price'))}")
-    if pd.notna(row.get('child_min_price', None)):
-        parts.append(f"Child Min Price: ${str(row.get('child_min_price'))}")
+    # if pd.notna(row.get('primary_category', None)):
+    #     parts.append(f"Primary Category: {str(row.get('primary_category'))}")
+    # if pd.notna(row.get('secondary_category', None)):
+    #     parts.append(f"Secondary Category: {str(row.get('secondary_category'))}")
+    # if pd.notna(row.get('tertiary_category', None)):
+    #     parts.append(f"Tertiary Category: {str(row.get('tertiary_category'))}")
+    # if pd.notna(row.get('child_count', None)):
+    #     parts.append(f"Child Count: {str(row.get('child_count'))}")
+    # if pd.notna(row.get('child_max_price', None)):
+    #     parts.append(f"Child Max Price: ${str(row.get('child_max_price'))}")
+    # if pd.notna(row.get('child_min_price', None)):
+    #     parts.append(f"Child Min Price: ${str(row.get('child_min_price'))}")
 
     return ". ".join(parts)  # 生成完整的产品描述文本
 

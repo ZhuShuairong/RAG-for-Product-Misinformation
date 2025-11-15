@@ -64,26 +64,6 @@ def convert_to_ml(amount, unit):
     return amount
 
 
-def detect_fragrance_mismatch(text, product_description):
-    """基于香味信息检测评论与产品描述之间的矛盾"""
-    fragrance_keywords = ["fragrance", "scent", "perfume", "odor", "aroma", "fragrant"]
-    negative_keywords = ["chemical", "overpowering", "strong", "intense", "unpleasant", "allergic", "irritate"]
-
-    # 检查评论中的香味相关关键词
-    fragrance_found = any(keyword in text for keyword in fragrance_keywords)
-    negative_fragrance = any(neg_keyword in text for neg_keyword in negative_keywords)
-
-    # # 如果评论提到香味，且产品标称无香料，可能是虚假评论  # BUG: 该逻辑可能误伤，先注释掉
-    # if "fragrance-free" in product_description and fragrance_found:
-    #     return "fake"
-
-    # # 如果评论提到香味，并且为负面描述，但产品描述中没有提到香味，可能是虚假评论  # BUG: 该逻辑可能误伤，先注释掉
-    # if fragrance_found and negative_fragrance and "fragrance" not in product_description:
-    #     return "fake"
-
-    return "real"
-
-
 def detect_skin_type_mismatch(text, product_meta):
     """检测评论中的皮肤类型与产品描述之间的矛盾"""
     skin_type_keywords = ["oily", "dry", "combination", "sensitive"]
@@ -213,17 +193,12 @@ def detect_factual_mismatch(review_context, retrieved_docs):
         doc_text = doc["document"].lower()
         doc_meta = doc["metadata"]
 
-        # # 1. 检查香味相关的矛盾  # BUG: 该逻辑可能误伤，先注释掉
-        # fragrance_mismatch = detect_fragrance_mismatch(text, doc_text)
-        # if fragrance_mismatch == "fake":
-        #     return "fake"
-
-        # 2. 适用范围矛盾（皮肤类型，适用对象）
+        # 1. 适用范围矛盾（皮肤类型，适用对象）
         skin_type_mismatch = detect_skin_type_mismatch(text, doc_meta)
         if skin_type_mismatch == "fake":
             return "fake"
 
-        # 3. 容量矛盾
+        # 2. 容量矛盾
         comment_capacity_ml_list = [convert_to_ml(comment_capacity, comment_unit) for comment_capacity, comment_unit in extract_capacity_from_text(text)]
         product_size = doc_meta.get("size", "").lower()
         product_capacity_ml_list = [convert_to_ml(prod_capacity, prod_unit) for prod_capacity, prod_unit in extract_capacity_from_text(product_size)]
@@ -238,7 +213,7 @@ def detect_factual_mismatch(review_context, retrieved_docs):
             if all(capacity_fake_flag):  # 所有容量均不匹配
                 return "fake"  # 容量差异过大，标记为假
 
-        # # 4. 价格矛盾  # BUG: 会匹配所有数字
+        # # 3. 价格矛盾  # BUG: 会匹配所有数字
         # comment_price = extract_price_from_text(text)
         # if comment_price:
         #     price_usd = safe_float(doc_meta.get("price_usd", 0))

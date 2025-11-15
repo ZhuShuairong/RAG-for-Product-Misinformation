@@ -99,8 +99,7 @@ class FakeReviewApp(QWidget):
             f"Rating: {selected_product_info['rating'].values[0]} | "
             f"Recommended: {recommended_status} | "
             f"Product summary: {selected_product_info['product_name'].values[0]} by {selected_product_info['brand_name'].values[0]}. "
-            f"Highlights: {selected_product_info['highlights'].values[0]}. "
-            f"Ingredients: {selected_product_info['ingredients'].values[0]}"
+            f"Highlights: {selected_product_info['highlights'].values[0]}."
         )
 
         # Process the review with the model

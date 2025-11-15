@@ -94,7 +94,7 @@ if __name__ == "__main__":
         for _, r in dfp.iterrows():
             pid = r.get("product_id")
             # 创建简短的产品摘要
-            prod_summary = f"{r.get('product_name', '')} by {r.get('brand_name', '')}. Highlights: {r.get('highlights', '')}. Ingredients: {r.get('ingredients', '')}"
+            prod_summary = f"{r.get('product_name', '')} by {r.get('brand_name', '')}. Highlights: {r.get('highlights', '')}."
             product_lookup[pid] = prod_summary
         print(f"[INFO] loaded {len(product_lookup)} products for join")
     process_files(files, args.out_file, product_lookup, args.max_rows)
