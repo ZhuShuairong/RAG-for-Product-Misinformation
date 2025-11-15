@@ -8,6 +8,7 @@ import json
 import pandas as pd
 from scripts.build_retriever import Retriever
 
+
 class FakeReviewApp(QWidget):
     def __init__(self):
         super().__init__()
@@ -128,24 +129,11 @@ class FakeReviewApp(QWidget):
             logits = outputs.logits
             prediction = torch.argmax(logits, dim=1).item()
 
-        # Retrieve product metadata
-        fact_label = self.detect_factual_mismatch(review_text, retrieved_docs)
-
         # Combine the prediction with factual consistency check
-        if prediction == 1 and fact_label == "real":
+        if prediction == 1:
             return "Real Review"
         else:
             return "Fake Review"
-
-    def detect_factual_mismatch(self, review_text, retrieved_docs):
-        """Use RAG to detect factual mismatches between the review and retrieved product info."""
-        text = review_text.lower()
-        for doc in retrieved_docs:
-            doc_text = doc["document"].lower()
-            # Here you can add more checks as required
-            if doc_text not in text:
-                return "fake"
-        return "real"
 
 
 if __name__ == '__main__':
