@@ -10,16 +10,16 @@ from scripts.build_retriever import Retriever
 
 
 class FakeReviewApp(QWidget):
-    def __init__(self):
+    def __init__(self, model_dir, product_info_file):
         super().__init__()
 
         # Load model and tokenizer
-        self.tokenizer = AutoTokenizer.from_pretrained("models/roberta_fake")
-        self.model = RobertaForSequenceClassification.from_pretrained("models/roberta_fake")
-        self.retriever = Retriever(model_dir="models/all-MiniLM-L6-v2")
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
+        self.model = RobertaForSequenceClassification.from_pretrained(model_dir).to(self.device)
 
         # Load product data (this should come from your actual product data)
-        self.product_data = self.load_product_data("data/product_info.csv")
+        self.product_data = self.load_product_data(product_info_file)
         self.product_names = self.product_data["product_name"].tolist()
 
         # Setup the GUI
@@ -103,11 +103,8 @@ class FakeReviewApp(QWidget):
             f"Ingredients: {selected_product_info['ingredients'].values[0]}"
         )
 
-        # Retrieve relevant product information using RAG
-        retrieved_docs = self.retriever.retrieve(context, top_k=3)
-
         # Process the review with the model
-        result = self.predict_fake_review(context, retrieved_docs)
+        result = self.predict_fake_review(context)
 
         # Display the result
         self.result_label.setText(f"Result: {result}")
@@ -118,9 +115,9 @@ class FakeReviewApp(QWidget):
         else:
             self.result_label.setStyleSheet("color: red;")  # Red for fake
 
-    def predict_fake_review(self, review_text, retrieved_docs):
+    def predict_fake_review(self, review_text):
         # Tokenize the review input
-        inputs = self.tokenizer(review_text, return_tensors='pt', truncation=True, padding=True, max_length=256)
+        inputs = self.tokenizer(review_text, return_tensors='pt', truncation=True, padding=True, max_length=512)
         inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
 
         # Model prediction
@@ -138,7 +135,10 @@ class FakeReviewApp(QWidget):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    ex = FakeReviewApp()
+    ex = FakeReviewApp(
+        model_dir='models/roberta_fake',  # Path to your trained model
+        product_info_file='data/product_info.csv'  # Path to your product info CSV
+    )
 
     # Set the overall window size larger (5x) and make it resizable
     ex.setMinimumSize(700, 500)  # Minimum size for resizing

@@ -84,7 +84,7 @@ if __name__ == "__main__":
 
 
     def tokenize_fn(ex):
-        return tokenizer(ex["text"], truncation=True, padding="max_length", max_length=256)
+        return tokenizer(ex["text"], truncation=True, padding="max_length", max_length=512)
 
 
     # Apply tokenization

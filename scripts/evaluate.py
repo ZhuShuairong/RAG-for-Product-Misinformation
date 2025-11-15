@@ -47,7 +47,7 @@ def evaluate_model(model_dir, test_file, max_rows=None):
     # 遍历所有测试样本
     for text, label in pbar:
         # 对文本进行tokenization
-        inputs = tokenizer(text, truncation=True, padding=True, max_length=256, return_tensors="pt")
+        inputs = tokenizer(text, truncation=True, padding=True, max_length=512, return_tensors="pt")
         inputs = {k: v.to(device) for k, v in inputs.items()}
 
         # 在不计算梯度的情况下，进行前向传播
