@@ -1,13 +1,12 @@
 import sys
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLineEdit, QLabel, QComboBox
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLineEdit, QLabel, QComboBox, QCheckBox
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from transformers import AutoTokenizer, RobertaForSequenceClassification
 import torch
-from scripts.build_retriever import Retriever
 import json
 import pandas as pd
-
+from scripts.build_retriever import Retriever
 
 class FakeReviewApp(QWidget):
     def __init__(self):
@@ -20,7 +19,6 @@ class FakeReviewApp(QWidget):
 
         # Load product data (this should come from your actual product data)
         self.product_data = self.load_product_data("data/product_info.csv")
-        # self.product_names = [product["product_name"] for product in self.product_data]
         self.product_names = self.product_data["product_name"].tolist()
 
         # Setup the GUI
@@ -56,6 +54,10 @@ class FakeReviewApp(QWidget):
         self.product_select.setFixedWidth(700)
         layout.addWidget(self.product_select)
 
+        # Create a checkbox to select "Recommended"
+        self.recommended_checkbox = QCheckBox("Recommended", self)
+        layout.addWidget(self.recommended_checkbox)
+
         # Create a button to run the detection
         self.detect_button = QPushButton('Check Review', self)
         self.detect_button.setFixedHeight(80)
@@ -86,12 +88,15 @@ class FakeReviewApp(QWidget):
         selected_product_name = self.product_select.currentText()
         selected_product_info = self.product_data[self.product_data["product_name"] == selected_product_name]
 
+        # Determine the recommended status based on checkbox
+        recommended_status = 1.0 if self.recommended_checkbox.isChecked() else 0.0
+
         # Concatenate review title, review text, and product information to form the context
         context = (
             f"Review title: {review_title} | "
             f"Review text: {review_text} | "
             f"Rating: {selected_product_info['rating'].values[0]} | "
-            f"Recommended: {selected_product_info['is_recommended'].values[0]} | "
+            f"Recommended: {recommended_status} | "
             f"Product summary: {selected_product_info['product_name'].values[0]} by {selected_product_info['brand_name'].values[0]}. "
             f"Highlights: {selected_product_info['highlights'].values[0]}. "
             f"Ingredients: {selected_product_info['ingredients'].values[0]}"
