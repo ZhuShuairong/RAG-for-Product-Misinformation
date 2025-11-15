@@ -295,7 +295,7 @@ if __name__ == "__main__":
     parser.add_argument("--top_k", type=int, default=3)
     args = parser.parse_args()
 
-    retriever = Retriever(model_dir="./models/all-MiniLM-L6-v2")  # 初始化检索器
+    retriever = Retriever(model_dir="models/all-MiniLM-L6-v2")  # 初始化检索器
 
     # 统计总行数以便进度条显示
     with open(args.in_file, "r", encoding="utf-8") as fin:

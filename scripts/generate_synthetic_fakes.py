@@ -324,7 +324,7 @@ if __name__ == "__main__":
     records = load_jsonl(in_path)
 
     # Initialize the Chroma retriever
-    retriever = Retriever(model_dir="./models/all-MiniLM-L6-v2")
+    retriever = Retriever(model_dir="models/all-MiniLM-L6-v2")
 
     real_reviews, fake_reviews = split_real_fake(records)
     real_count = len(real_reviews)

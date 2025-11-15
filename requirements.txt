@@ -9,3 +9,4 @@ datasets
 scikit-learn
 kaggle
 accelerate
+pyqt5

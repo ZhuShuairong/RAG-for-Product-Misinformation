@@ -39,7 +39,7 @@ class Retriever:
 
 
 if __name__ == "__main__":
-    r = Retriever(model_dir="./models/all-MiniLM-L6-v2")
+    r = Retriever(model_dir="models/all-MiniLM-L6-v2")
     q = "This cream smells strongly of perfume and made my skin dry."
     print("Query:", q)
     out = r.retrieve(q, top_k=3)

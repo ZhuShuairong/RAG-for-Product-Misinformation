@@ -7,7 +7,7 @@ if __name__ == "__main__":
     p.add_argument("--query", type=str, required=False, default="This cream smells strongly of perfume and made my skin dry.")
     p.add_argument("--top_k", type=int, default=3)
     args = p.parse_args()
-    r = Retriever()
+    r = Retriever(model_dir="models/all-MiniLM-L6-v2")
     results = r.retrieve(args.query, top_k=args.top_k)
     for i, rdoc in enumerate(results):
         print(f"### Rank {i + 1} id={rdoc['id']}")
