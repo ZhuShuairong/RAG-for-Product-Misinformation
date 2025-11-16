@@ -117,11 +117,10 @@ Now write ONE NEW fake-looking review for the SAME product with the following de
 ---
 Product summary: {product_meta["product_name"]} by {product_meta["brand_name"]}. 
 Highlights: {product_meta["highlights"]}.
-Ingredients: {product_meta["ingredients"]}.
 Rating: {product_meta["rating"]}.
 Price: {product_meta["price_usd"]} USD.
 Sale Price: {product_meta["sale_price_usd"]} USD.
-Recommended: {product_meta["recommended"]}.
+Recommended: 0.0 or 1.0.
 ---
 Requirements:
 - Use exaggerated or promotional language.
@@ -131,7 +130,8 @@ Requirements:
 - Do NOT talk about writing reviews, datasets, or training.
 - The text should sound like a normal user review on an e-commerce site.
 
-Return ONLY the review text, nothing else.
+Only text comments that meet the following format (without line breaks, written on one line) will be returned; all other content will not be returned:
+Review title: ... | Review text: ... | Rating: ... | Recommended: ... | Product summary: ... by .... Highlights: ....
 """
     return prompt.strip()
 
@@ -180,21 +180,21 @@ def generate_fake_review_with_ollama(real_rec, fake_rec, model_name, retriever):
     # Assuming the response contains the generated fake review
     context = resp.get("message", {}).get("content", "").strip()
     if not check_format_validity(context):
-        print(f"[WARNING] The generated review does not conform to the expected format. Review: {context}")
+        # print(f"[WARNING] The generated review does not conform to the expected format. Review: {context}")
         format_validity_checked = False
     else:
         format_validity_checked = True
 
     regenerate_count = 0
     while (not context or not format_validity_checked) and regenerate_count < 3:
-        print(f"[INFO] Regenerating review due to invalid format...")
+        # print(f"[INFO] Regenerating review due to invalid format...")
         resp = ollama.chat(
             model=model_name,
             messages=[{"role": "user", "content": prompt}],
         )
         context = resp.get("message", {}).get("content", "").strip()
         if not check_format_validity(context):
-            print(f"[WARNING] The generated review does not conform to the expected format. Review: {context}")
+            # print(f"[WARNING] The generated review does not conform to the expected format. Review: {context}")
             format_validity_checked = False
         else:
             format_validity_checked = True
@@ -273,7 +273,7 @@ def generate_random_review_info():
     }
 
 
-def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model_name, retriever, ollama_combine_ratio=1, online_troll_behavior=False):
+def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model_name, retriever, ollama_combine_ratio=0, online_troll_behavior=False):
     """
     Generate many fake records (using only existing fake reviews)
 
@@ -283,7 +283,7 @@ def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model
         n_samples (int): Number of synthetic fake samples to generate.
         model_name (str): Ollama model name to use.
         retriever (Retriever): Retriever instance for product info.
-        ollama_combine_ratio (int): Ratio of combining existing fake reviews to Ollama generated reviews.
+        ollama_combine_ratio (int): Ratio of combining existing fake reviews to Ollama generated reviews. Default is 0 (no combining).
         online_troll_behavior (bool): If True, simulate online troll behavior by adding more duplicates.
     """
     if not real_reviews:
@@ -306,7 +306,7 @@ def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model
         # 1. Generate one fake review using Ollama
         ollama_fake_response = generate_fake_review_with_ollama(real_rec, fake_rec, model_name, retriever)
         if ollama_fake_response is None:
-            print(f"[WARNING] Skipping generation at step {step + 1} due to repeated invalid formats.")
+            print(f"\n[WARNING] Skipping generation at step {step + 1} due to repeated invalid formats.")
             continue  # Skip this iteration if generation failed
         ollama_fake = ollama_fake_response["context"]
         product_meta = ollama_fake_response["meta"]
@@ -333,7 +333,7 @@ def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model
                 synthetic_records.append(new_rec_ollama)
 
         # 2. Combine existing fake reviews with the generated review for another fake review
-        if ollama_combine_ratio != 0 & step % ollama_combine_ratio == 0:
+        if ollama_combine_ratio != 0 and step % ollama_combine_ratio == 0:
             # combined_fake = augment_fake_review(extract_review_text(fake_rec))
             combined_fake = augment_fake_review(extract_review_text(ollama_fake))
 
@@ -372,7 +372,7 @@ if __name__ == "__main__":
     parser.add_argument("--out_train_file", type=str, required=True, help="Output jsonl file for augmented training data.", default="data/train_augmented.jsonl")
     parser.add_argument("--model", type=str, default="llama3.2:3b", help="Ollama model name to use.")
     parser.add_argument("--ollama_ratio", type=float, default=1.0, help="Ratio of Ollama generated fake reviews to original real reviews.")
-    parser.add_argument("--ollama_combine_ratio", type=int, default=1, help="Ratio of combining existing fake reviews to Ollama generated reviews. E.g., 2 means for every 2 Ollama reviews, generate 1 combined fake review.")
+    parser.add_argument("--ollama_combine_ratio", type=int, default=0, help="Ratio of combining existing fake reviews to Ollama generated reviews. E.g., 2 means for every 2 Ollama reviews, generate 1 combined fake review.")
     parser.add_argument("--online_troll_behavior", action="store_true", help="Simulate online troll behavior by adding more duplicate synthetic reviews.", default=False)
     args = parser.parse_args()
 

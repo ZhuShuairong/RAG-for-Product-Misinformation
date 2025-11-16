@@ -28,7 +28,6 @@ def save_jsonl(file_path, records):
 
 
 def create_small_dataset(input_file, output_file, ratio_real_to_fake=1.0, split=False, test_ratio=0.2):
-
     if split and (test_ratio > 1.0 or test_ratio < 0.0):
         raise ValueError("test_ratio must be between 0.0 and 1.0")
 
@@ -43,6 +42,42 @@ def create_small_dataset(input_file, output_file, ratio_real_to_fake=1.0, split=
         raise ValueError("No fake reviews found in the dataset.")
     if not real_reviews:
         raise ValueError("No real reviews found in the dataset.")
+
+    real_reviews_count, fake_reviews_count = len(real_reviews), len(fake_reviews)
+
+    if real_reviews_count < fake_reviews_count * ratio_real_to_fake:
+        print(f"[Error] Not enough real reviews to satisfy the ratio of {ratio_real_to_fake}:1 with fake reviews.\n"
+              f"Now we have {real_reviews_count} real reviews and {fake_reviews_count} fake reviews.\n"
+              f"So we will sample equal number of real and fake reviews.")
+        length = max(real_reviews_count, fake_reviews_count)
+        sampled_real_reviews = random.sample(real_reviews, length)
+        sampled_fake_reviews = random.sample(fake_reviews, length)
+        if split:
+            # Randomly sample test sets
+            real_test_count = max(int(len(sampled_real_reviews) * test_ratio), 1)
+            # split real reviews into train and test
+            sampled_real_reviews_train, sampled_real_reviews_test = sampled_real_reviews[:-real_test_count], sampled_real_reviews[-real_test_count:]
+            fake_test_count = max(int(len(sampled_fake_reviews) * test_ratio), 1)
+            # split fake reviews into train and test
+            sampled_fake_reviews_train, sampled_fake_reviews_test = sampled_fake_reviews[:-fake_test_count], sampled_fake_reviews[-fake_test_count:]
+            small_dataset_train = sampled_real_reviews_train + sampled_fake_reviews_train
+            random.shuffle(small_dataset_train)
+            small_dataset_test = sampled_real_reviews_test + sampled_fake_reviews_test
+            random.shuffle(small_dataset_test)
+            train_output_file = str(Path(output_file).with_name(Path(output_file).stem + "_train.jsonl"))
+            save_jsonl(train_output_file, small_dataset_train)
+            print(f"[INFO] Training set saved to {train_output_file} with {len(small_dataset_train)} records.")
+            test_output_file = str(Path(output_file).with_name(Path(output_file).stem + "_test.jsonl"))
+            save_jsonl(test_output_file, small_dataset_test)
+            print(f"[INFO] Test set saved to {test_output_file} with {len(small_dataset_test)} records.")
+        # Combine the sampled real reviews with sampled fake reviews
+        small_dataset = sampled_real_reviews + sampled_fake_reviews
+        # Shuffle the combined dataset
+        random.shuffle(small_dataset)
+        # Save the new small dataset
+        save_jsonl(output_file, small_dataset)
+        print(f"[INFO] Small dataset saved to {output_file} with {len(small_dataset)} records.")
+        return
 
     # Randomly sample fake_reviews
     fake_sample_count = max(int(len(fake_reviews) * ratio_real_to_fake), 1)  # Twice the number of fake reviews
@@ -81,8 +116,8 @@ def create_small_dataset(input_file, output_file, ratio_real_to_fake=1.0, split=
 if __name__ == "__main__":
     # Initialize the argument parser
     parser = argparse.ArgumentParser(description="Generate a small dataset of real and fake reviews.")
-    parser.add_argument("--input_file", type=str, required=True, help="Path to the input reviews JSONL file.",default="data/reviews_with_labels.jsonl")
-    parser.add_argument("--output_file", type=str, required=True, help="Path to save the generated small dataset JSONL file.",default="data/reviews_with_labels_small.jsonl")
+    parser.add_argument("--input_file", type=str, required=True, help="Path to the input reviews JSONL file.", default="data/reviews_with_labels.jsonl")
+    parser.add_argument("--output_file", type=str, required=True, help="Path to save the generated small dataset JSONL file.", default="data/reviews_with_labels_small.jsonl")
     parser.add_argument("--ratio_real_to_fake", type=float, default=1.0, help="Ratio of real to fake reviews in the small dataset.")
     parser.add_argument("--split", action="store_true", help="Whether to create separate train and test files.", default=False)
     parser.add_argument("--test_ratio", type=float, default=0.2, help="Proportion of the dataset to include in the test split.")

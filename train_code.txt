@@ -24,7 +24,9 @@ python scripts/create_small_dataset.py --input_file data/reviews_with_labels.jso
 python scripts/generate_synthetic_fakes.py --in_file data/reviews_with_labels.jsonl --out_fake_file data/synthetic_fake_reviews.jsonl --out_train_file data/train_augmented.jsonl --model llama3.2:3b --ollama_ratio 0.3 --ollama_combine_ratio 1 --online_troll_behavior
 # 6.2.2
 python scripts/create_small_dataset.py --input_file data/reviews_with_labels.jsonl --output_file data/reviews_with_labels_real2_fake1.jsonl --ratio_real_to_fake 2.0
-python scripts/generate_synthetic_fakes.py --in_file data/reviews_with_labels_real2_fake1.jsonl --out_fake_file data/reviews_with_labels_small_synthetic_fake_reviews.jsonl --out_train_file data/reviews_with_labels_small_train_augmented.jsonl --model llama3.2:3b --ollama_ratio 0.25 --ollama_combine_ratio 1
+python scripts/generate_synthetic_fakes.py --in_file data/reviews_with_labels_real2_fake1.jsonl --out_fake_file data/reviews_ollama_context_fake.jsonl --out_train_file data/reviews_ollama_context.jsonl --model llama3.2:3b --ollama_ratio 0.5 --online_troll_behavior
+python scripts/generate_pseudo_labels.py --in_file data/reviews_ollama_context.jsonl --out_file data/reviews_ollama_context_labeled.jsonl --top_k 3
+python scripts/create_small_dataset.py --input_file data/reviews_ollama_context_labeled.jsonl --output_file data/reviews_with_labels_small_train.jsonl --ratio_real_to_fake 1.0 --split --test_ratio 0.1
 
 # 7 Train and evaluate classifiers
 # 7.1 Classifier training and evaluation
@@ -37,6 +39,9 @@ python scripts/evaluate_classifier.py --model_dir models/roberta_fake_classifier
 # 7.1.3
 python scripts/train_classifier.py --train_file data/reviews_with_labels_small_train.jsonl --model_name roberta-base --output_dir models/roberta_fake_classifier --epoch 10
 python scripts/evaluate_classifier.py --model_dir models/roberta_fake_classifier --test_file data/reviews_with_labels_small_test.jsonl
+# 7.1.4
+python scripts/train_classifier.py --train_file data/reviews_ollama_context_labeled_train.jsonl --model_name roberta-base --output_dir models/roberta_fake_ollama_classifier --epoch 10
+python scripts/evaluate_classifier.py --model_dir models/roberta_fake_ollama_classifier --test_file data/reviews_ollama_context_labeled_test.jsonl
 
 # 7.2 Explainer training and evaluation
 # 7.2.1  # BUG: Hypervisor Error
