@@ -7,6 +7,7 @@ import torch
 import json
 import pandas as pd
 from scripts.build_retriever import Retriever
+improt re
 
 
 class ExplainerReviewApp(QWidget):

@@ -1,4 +1,5 @@
 # 1 Set up environment
+# conda activate py
 pip install --upgrade -r ./requirements.txt
 
 # 2 Download and prepare data
@@ -39,8 +40,11 @@ python scripts/evaluate_classifier.py --model_dir models/roberta_fake_classifier
 
 # 7.2 Explainer training and evaluation
 # 7.2.1
-python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name t5-base --output_dir models/t5_fake_explainer  --epoch 10
-# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name facebook/bart-large --output_dir models/bart_fake_explainer  --epoch 10
+# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name t5-base --output_dir models/t5_fake_explainer  --epoch 10
+# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name lora-t5 --output_dir models/lora_t5_fake_explainer  --epoch 10
+# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name t5-small --output_dir models/t5_small_fake_explainer  --epoch 10
+# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name facebook/bart-large --output_dir models/bart_large_fake_explainer  --epoch 10
+# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name facebook/bart-base --output_dir models/bart_fake_explainer  --epoch 10
 python scripts/evaluate_explainer.py --model_dir models/roberta_explainer --test_file
 
 

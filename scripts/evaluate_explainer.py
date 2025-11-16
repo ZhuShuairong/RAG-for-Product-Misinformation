@@ -53,8 +53,40 @@ def evaluate_model(model_dir, test_file, max_rows=None, max_new_tokens=64):
     examples = load_examples(test_file, max_rows)
 
     # Load model
-    tokenizer = AutoTokenizer.from_pretrained(model_dir)
-    model = AutoModelForSeq2SeqLM.from_pretrained(model_dir)
+    # tokenizer = AutoTokenizer.from_pretrained(model_dir)
+    # model = AutoModelForSeq2SeqLM.from_pretrained(model_dir)
+    lora_t5_flag = False  # mark loRA T5 model
+    model, tokenizer = None, None
+    if args.model_name in ["t5-base", "lora-t5", "t5-small", "lora-t5-small"]:
+        if args.model_name in ["lora-t5", "lora-t5-small"]:
+            if args.model_name == "lora-t5":
+                args.model_name = "t5-base"  # Use base model for loading
+            elif args.model_name == "lora-t5-small":
+                args.model_name = "t5-small"  # Use base model for loading
+            lora_t5_flag = True
+        from transformers import T5Tokenizer, T5ForConditionalGeneration
+        tokenizer = T5Tokenizer.from_pretrained(args.model_name)
+        model = T5ForConditionalGeneration.from_pretrained(args.model_name)
+    elif args.model_name in ["facebook/bart-large"]:
+        from transformers import BartTokenizer, BartForConditionalGeneration
+        tokenizer = BartTokenizer.from_pretrained(args.model_name)
+        model = BartForConditionalGeneration.from_pretrained(args.model_name)
+    else:
+        model, tokenizer = None, None
+    if model is None or tokenizer is None:
+        raise ValueError(f"Unsupported model_name: {args.model_name}")
+
+    if lora_t5_flag:
+        from peft import PeftModel, LoraConfig
+
+        model = PeftModel(
+            model=model,
+            peft_config=LoraConfig(
+                r=8,
+                lora_alpha=32,
+                lora_dropout=0.1,
+            ),
+        )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)

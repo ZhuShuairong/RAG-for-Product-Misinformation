@@ -9,6 +9,7 @@ import numpy as np
 import sklearn
 from tqdm import tqdm
 
+
 # ----------------------------------------------------------
 # Load JSONL
 # ----------------------------------------------------------
@@ -22,6 +23,7 @@ def load_jsonl(file_path, max_rows=None):
                 break
             rows.append(json.loads(line))
     return rows
+
 
 # ----------------------------------------------------------
 # Prepare training examples
@@ -51,6 +53,7 @@ def prepare_examples(rows):
         })
 
     return examples
+
 
 # ----------------------------------------------------------
 # Tokenizer function
@@ -96,6 +99,7 @@ def preprocess_fn(batch, tokenizer, max_input_len=512, max_output_len=128):
     model_inputs["labels"] = label_ids
     return model_inputs
 
+
 # ----------------------------------------------------------
 # Compute metrics
 # ----------------------------------------------------------
@@ -108,6 +112,7 @@ def compute_metrics(p):
         "macro f1": sklearn.metrics.f1_score(labels, preds, average="macro"),
         "weighted f1": sklearn.metrics.f1_score(labels, preds, average="weighted"),
     }
+
 
 # ----------------------------------------------------------
 # Trainer
@@ -137,14 +142,49 @@ if __name__ == "__main__":
 
     dataset = dataset.train_test_split(test_size=0.1)
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name)
+    # tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    # model = AutoModelForSeq2SeqLM.from_pretrained(args.model_name)
+    lora_t5_flag = False  # mark loRA T5 model
+    model, tokenizer = None, None
+    if args.model_name in ["t5-base", "lora-t5", "t5-small", "lora-t5-small"]:
+        if args.model_name in ["lora-t5", "lora-t5-small"]:
+            if args.model_name == "lora-t5":
+                args.model_name = "t5-base"  # Use base model for loading
+            elif args.model_name == "lora-t5-small":
+                args.model_name = "t5-small"  # Use base model for loading
+            lora_t5_flag = True
+        from transformers import T5Tokenizer, T5ForConditionalGeneration
+
+        tokenizer = T5Tokenizer.from_pretrained(args.model_name)
+        model = T5ForConditionalGeneration.from_pretrained(args.model_name)
+    elif args.model_name in ["facebook/bart-large", "facebook/bart-base"]:
+        from transformers import BartTokenizer, BartForConditionalGeneration
+
+        tokenizer = BartTokenizer.from_pretrained(args.model_name)
+        model = BartForConditionalGeneration.from_pretrained(args.model_name)
+    else:
+        model, tokenizer = None, None
+    if model is None or tokenizer is None:
+        raise ValueError(f"Unsupported model_name: {args.model_name}")
+
+    if lora_t5_flag:
+        from peft import PeftModel, LoraConfig
+
+        model = PeftModel(
+            model=model,
+            peft_config=LoraConfig(
+                r=8,
+                lora_alpha=32,
+                lora_dropout=0.1,
+            ),
+        )
 
     # map preprocess
     dataset = dataset.map(
         lambda batch: preprocess_fn(batch, tokenizer),
         batched=True,
-        remove_columns=dataset["train"].column_names
+        remove_columns=dataset["train"].column_names,
+        keep_in_memory=False  # Avoid keeping data in memory to manage memory consumption
     )
 
     dataset.set_format(type="torch")
@@ -176,7 +216,7 @@ if __name__ == "__main__":
         train_dataset=dataset["train"],
         eval_dataset=dataset["test"],
         compute_metrics=compute_metrics,  # Add the metrics function here
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=2)]
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]  # Stop training if no improvement for 2 evals
     )
 
     print("[INFO] Starting training...")

@@ -101,7 +101,11 @@ if __name__ == "__main__":
 
 
     # Apply tokenization
-    train_test = train_test.map(lambda ex: tokenize_fn(ex), batched=True)
+    train_test = train_test.map(
+        lambda ex: tokenize_fn(ex),
+        batched=True,
+        keep_in_memory=False,  # Avoid keeping data in memory to manage memory consumption
+    )
     train_test.set_format(type="torch", columns=["input_ids", "attention_mask", "label"])
 
     # set a batch size for compute_loss_func
