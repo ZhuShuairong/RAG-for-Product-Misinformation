@@ -40,3 +40,21 @@ Review title: not bad!
 Review text: smells really nice! feels a bit sticky/tight once it dries on the face though
 Product Name: Banana Bright 15% Vitamin C Serum
 Recommended: 1.0
+
+---
+
+Context: Review title: works so well! | Review text: I got this as a sample product and it works miracles for my under eye badges and dark circles! | Rating: 5 | Recommended: 1.0 | Product summary: Vitamin Enriched Eye Base by Bobbi Brown. Highlights: ['Hydrating', 'Plumping', 'Good for: Dark Circles', 'Vitamin C', 'Hyaluronic Acid', 'Community Favorite'].
+Pseudo Label: real
+Review title: works so well!
+Review text: I got this as a sample product and it works miracles for my under eye badges and dark circles!
+Product Name: Vitamin Enriched Eye Base
+Recommended: 1.0
+
+---
+
+Context: Review title: I’m going to have to buy the full size. | Review text: I received this in a Sephora Play box and the small sample lasted for a long while. It smells so good and my skin SO SOFT! I’ve been trying to tell myself it didn’t make a huge difference but I’ve been without it for about a month and I can see the difference in my skin. It is just not as soft smooth and supple as it was while using this product. I’m going to have to buy the full size or the kit that has the 1 oz jar and the eye balm. | Rating: 5 | Recommended: 1.0 | Product summary: POWER Recharging Night Pressed Serum by Algenist. Highlights: nan.
+Pseudo Label: fake
+Review title: I’m going to have to buy the full size.
+Review text: I received this in a Sephora Play box and the small sample lasted for a long while. It smells so good and my skin SO SOFT! I’ve been trying to tell myself it didn’t make a huge difference but I’ve been without it for about a month and I can see the difference in my skin. It is just not as soft smooth and supple as it was while using this product. I’m going to have to buy the full size or the kit that has the 1 oz jar and the eye balm.
+Product Name: POWER Recharging Night Pressed Serum
+Recommended: 1.0

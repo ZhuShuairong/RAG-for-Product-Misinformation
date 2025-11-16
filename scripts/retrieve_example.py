@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 from build_retriever import Retriever
 import argparse
 

@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""
-download_sephora.py
-简单封装 kaggle dataset 下载（需预先配置 kaggle.json）
-Usage:
-    python scripts/download_sephora.py --dataset nadyinky/sephora-products-and-skincare-reviews --out_dir data
-"""
 import argparse
 import os
 import shutil

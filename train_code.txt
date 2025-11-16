@@ -26,16 +26,22 @@ python scripts/create_small_dataset.py --input_file data/reviews_with_labels.jso
 python scripts/generate_synthetic_fakes.py --in_file data/reviews_with_labels_real2_fake1.jsonl --out_fake_file data/reviews_with_labels_small_synthetic_fake_reviews.jsonl --out_train_file data/reviews_with_labels_small_train_augmented.jsonl --model llama3.2:3b --ollama_ratio 0.25 --ollama_combine_ratio 1
 
 # 7 Train and evaluate classifiers
-# 7.1 Classifier training and evaluation on full dataset
+# 7.1 Classifier training and evaluation
 # 7.1.1
-python scripts/train_classifier.py --train_file data/reviews_with_labels.jsonl --model_name roberta-base --output_dir models/roberta_fake --epoch 2
-python scripts/evaluate.py --model_dir models/roberta_fake --test_file data/reviews_with_labels.jsonl
+python scripts/train_classifier.py --train_file data/reviews_with_labels.jsonl --model_name roberta-base --output_dir models/roberta_fake_classifier --epoch 2
+python scripts/evaluate_classifier.py --model_dir models/roberta_fake_classifier --test_file data/reviews_with_labels.jsonl
 # 7.1.2
-python scripts/train_classifier.py --train_file data/reviews_with_labels_small.jsonl --model_name roberta-base --output_dir models/roberta_fake --epoch 2
-python scripts/evaluate.py --model_dir models/roberta_fake --test_file data/reviews_with_labels_small.jsonl
+python scripts/train_classifier.py --train_file data/reviews_with_labels_small.jsonl --model_name roberta-base --output_dir models/roberta_fake_classifier --epoch 2
+python scripts/evaluate_classifier.py --model_dir models/roberta_fake_classifier --test_file data/reviews_with_labels_small.jsonl
 # 7.1.3
-python scripts/train_classifier.py --train_file data/reviews_with_labels_small_train.jsonl --model_name roberta-base --output_dir models/roberta_fake --epoch 10
-python scripts/evaluate.py --model_dir models/roberta_fake --test_file data/reviews_with_labels_small_test.jsonl
+python scripts/train_classifier.py --train_file data/reviews_with_labels_small_train.jsonl --model_name roberta-base --output_dir models/roberta_fake_classifier --epoch 10
+python scripts/evaluate_classifier.py --model_dir models/roberta_fake_classifier --test_file data/reviews_with_labels_small_test.jsonl
+
+# 7.2 Explainer training and evaluation
+# 7.2.1
+python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name t5-base --output_dir models/t5_fake_explainer  --epoch 10
+# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name facebook/bart-large --output_dir models/bart_fake_explainer  --epoch 10
+python scripts/evaluate_explainer.py --model_dir models/roberta_explainer --test_file
 
 
 

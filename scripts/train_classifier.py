@@ -41,7 +41,10 @@ def prepare_examples(rows, max_retrieved_chars=None):
         else:
             continue  # Skip if label is unknown
 
-        examples.append({"text": ctx, "label": y})
+        examples.append({
+            "text": ctx,
+            "label": y,
+        })
     return examples, real_count, fake_count
 
 
@@ -60,7 +63,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--train_file", type=str, default="data/reviews_with_labels.jsonl")
     parser.add_argument("--model_name", type=str, default="roberta-base")
-    parser.add_argument("--output_dir", type=str, default="models/roberta_fake")
+    parser.add_argument("--output_dir", type=str, default="models/roberta_fake_classifier")
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--max_rows", type=int, default=None)  # For testing, adjust as needed
     args = parser.parse_args()
@@ -80,20 +83,26 @@ if __name__ == "__main__":
     train_test = dataset.train_test_split(test_size=0.1)
     # train_test = dataset.train_test_split(test_size=0.1, seed=42)
 
+    # Model setup
+    model = RobertaForSequenceClassification.from_pretrained(args.model_name, num_labels=len(set(labels)))
     # Tokenizer setup
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    if model is None or tokenizer is None:
+        raise ValueError(f"Unsupported model name: {args.model_name}")
 
 
     def tokenize_fn(ex):
-        return tokenizer(ex["text"], truncation=True, padding="max_length", max_length=512)
+        return tokenizer(
+            ex["text"],
+            truncation=True,
+            padding="max_length",  # 确保所有样本都有相同长度
+            max_length=512,  # 设置合理的最大长度
+        )
 
 
     # Apply tokenization
     train_test = train_test.map(lambda ex: tokenize_fn(ex), batched=True)
     train_test.set_format(type="torch", columns=["input_ids", "attention_mask", "label"])
-
-    # Model setup
-    model = RobertaForSequenceClassification.from_pretrained(args.model_name, num_labels=len(set(labels)))
 
     # set a batch size for compute_loss_func
     batch_size = 8
@@ -117,6 +126,7 @@ if __name__ == "__main__":
         report_to="none",  # 禁用日志报告
         learning_rate=5e-5,  # Learning rate
         lr_scheduler_type="linear",  # Learning rate scheduler type (default: linear)
+        save_total_limit=1,  # Only keep the best model
     )
 
     # Trainer setup
@@ -130,6 +140,7 @@ if __name__ == "__main__":
     )
 
     # Train the model
+    print("[INFO] Starting training...")
     trainer.train()
 
     # Save model and tokenizer

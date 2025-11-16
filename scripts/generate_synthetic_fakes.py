@@ -6,6 +6,7 @@ import copy
 from tqdm import tqdm
 import ollama  # Local LLM client for Ollama model
 from build_retriever import Retriever
+import re
 
 
 # ------------------------------
@@ -114,9 +115,14 @@ Here is an EXAMPLE of a low-quality / fake-looking review style:
 
 Now write ONE NEW fake-looking review for the SAME product with the following details:
 ---
-{product_info_str}
+Product summary: {product_meta["product_name"]} by {product_meta["brand_name"]}. 
+Highlights: {product_meta["highlights"]}.
+Ingredients: {product_meta["ingredients"]}.
+Rating: {product_meta["rating"]}.
+Price: {product_meta["price_usd"]} USD.
+Sale Price: {product_meta["sale_price_usd"]} USD.
+Recommended: {product_meta["recommended"]}.
 ---
-
 Requirements:
 - Use exaggerated or promotional language.
 - Use an extreme sentiment (either very positive or very negative).
@@ -128,6 +134,35 @@ Requirements:
 Return ONLY the review text, nothing else.
 """
     return prompt.strip()
+
+
+def check_format_validity(context):
+    """Check if the context string contains the expected format"""
+    # Expected format patterns (basic checks for each part of context)
+    required_parts = [
+        r"Review text: .*",  # Ensure 'Review text: ' exists
+        r"Rating: .*",  # Ensure 'Rating: ' exists
+        r"Product summary: .*",  # Ensure 'Product summary: ' exists
+        r"Highlights: .*"  # Ensure 'Highlights: ' exists
+    ]
+
+    # Check for the required parts
+    for pattern in required_parts:
+        if not re.search(pattern, context):
+            return False  # If any part is missing, return False
+
+    # Optionally check for 'Review title' and 'Recommended' (both can be missing)
+    optional_parts = [
+        r"Review title: .*",  # Optional: 'Review title: ' can be missing
+        r"Recommended: .*"  # Optional: 'Recommended: ' can be missing
+    ]
+
+    # Only check these optional parts if they exist in the context
+    for pattern in optional_parts:
+        if re.search(pattern, context) is None:
+            continue  # Skip if the part is missing, as it's optional
+
+    return True  # If all required parts are present and optional parts are handled, return True
 
 
 def generate_fake_review_with_ollama(real_rec, fake_rec, model_name, retriever):
@@ -143,10 +178,32 @@ def generate_fake_review_with_ollama(real_rec, fake_rec, model_name, retriever):
     )
 
     # Assuming the response contains the generated fake review
-    ollama_fake_review = resp.get("message", {}).get("content", "").strip()
+    context = resp.get("message", {}).get("content", "").strip()
+    if not check_format_validity(context):
+        print(f"[WARNING] The generated review does not conform to the expected format. Review: {context}")
+        format_validity_checked = False
+    else:
+        format_validity_checked = True
+
+    regenerate_count = 0
+    while (not context or not format_validity_checked) and regenerate_count < 3:
+        print(f"[INFO] Regenerating review due to invalid format...")
+        resp = ollama.chat(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        context = resp.get("message", {}).get("content", "").strip()
+        if not check_format_validity(context):
+            print(f"[WARNING] The generated review does not conform to the expected format. Review: {context}")
+            format_validity_checked = False
+        else:
+            format_validity_checked = True
+        regenerate_count += 1
+    if regenerate_count >= 3:
+        return None
 
     # Return both the generated review and product metadata
-    return {"review_text": ollama_fake_review, "meta": product_meta}
+    return {"context": context, "meta": product_meta}
 
 
 # ------------------------------
@@ -248,12 +305,15 @@ def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model
 
         # 1. Generate one fake review using Ollama
         ollama_fake_response = generate_fake_review_with_ollama(real_rec, fake_rec, model_name, retriever)
-        ollama_fake = ollama_fake_response["review_text"]
+        if ollama_fake_response is None:
+            print(f"[WARNING] Skipping generation at step {step + 1} due to repeated invalid formats.")
+            continue  # Skip this iteration if generation failed
+        ollama_fake = ollama_fake_response["context"]
         product_meta = ollama_fake_response["meta"]
 
         # Create a new record based on real_rec skeleton (Ollama generated fake review)
         new_rec_ollama = copy.deepcopy(real_rec)
-        new_rec_ollama["review_text"] = ollama_fake
+        new_rec_ollama["context"] = ollama_fake
         new_rec_ollama["pseudo_label"] = "fake"  # Use original label field
         new_rec_ollama["meta"] = product_meta  # Add metadata from the generated fake review
 
@@ -266,7 +326,7 @@ def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model
         if online_troll_behavior and step % 1000 == 0:
             for _ in range(random.randint(0, 10)):
                 new_rec_ollama = copy.deepcopy(real_rec)
-                new_rec_ollama["review_text"] = ollama_fake
+                new_rec_ollama["context"] = ollama_fake
                 new_rec_ollama["pseudo_label"] = "fake"  # Use original label field
                 random_info = generate_random_review_info()
                 new_rec_ollama.update(random_info)
@@ -278,7 +338,7 @@ def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model
             combined_fake = augment_fake_review(extract_review_text(ollama_fake))
 
             new_rec_combined = copy.deepcopy(real_rec)
-            new_rec_combined["review_text"] = combined_fake
+            new_rec_combined["context"] = combined_fake
             new_rec_combined["pseudo_label"] = "fake"  # Use original label field
             new_rec_ollama["meta"] = product_meta  # Add metadata from the generated fake review
 
@@ -292,7 +352,7 @@ def generate_synthetic_fake_records(real_reviews, fake_reviews, n_samples, model
                 for _ in range(random.randint(0, 50)):
                     combined_fake = augment_fake_review(extract_review_text(ollama_fake))
                     new_rec_combined = copy.deepcopy(real_rec)
-                    new_rec_combined["review_text"] = combined_fake
+                    new_rec_combined["context"] = combined_fake
                     new_rec_combined["pseudo_label"] = "fake"  # Use original label field
                     random_info = generate_random_review_info()
                     new_rec_combined.update(random_info)
