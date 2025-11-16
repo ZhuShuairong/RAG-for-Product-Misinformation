@@ -1,17 +1,16 @@
-import sys
 from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QPushButton, QLineEdit, QLabel, QComboBox, QCheckBox
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 import torch
-import json
 import pandas as pd
+import re
 from scripts.build_retriever import Retriever
-improt re
+import sys
 
 
 class ExplainerReviewApp(QWidget):
-    def __init__(self, model_dir, product_info_file):
+    def __init__(self, model_dir, product_info_file, max_length=512):
         super().__init__()
 
         # Load model and tokenizer
@@ -22,6 +21,8 @@ class ExplainerReviewApp(QWidget):
         # Load product data (this should come from your actual product data)
         self.product_data = self.load_product_data(product_info_file)
         self.product_names = self.product_data["product_name"].tolist()
+
+        self.max_length = max_length
 
         # Setup the GUI
         self.initUI()
@@ -77,9 +78,10 @@ class ExplainerReviewApp(QWidget):
 
         # Reason label to display the explanation
         self.reason_label = QLabel('Reason: None', self)
-        self.reason_label.setAlignment(Qt.AlignCenter)
-        self.reason_label.setFont(QFont('Arial', 18))  # Set a larger font for reason
-        self.reason_label.setFixedHeight(100)
+        self.reason_label.setAlignment(Qt.AlignLeft)  # Left align reason
+        self.reason_label.setWordWrap(True)  # Enable word wrap
+        self.reason_label.setFont(QFont('Arial', 16))  # Adjust font size for reason text
+        self.reason_label.setFixedHeight(150)
         self.reason_label.setFixedWidth(700)
         layout.addWidget(self.reason_label)
 
@@ -128,7 +130,7 @@ class ExplainerReviewApp(QWidget):
 
     def predict_fake_review_with_explainer(self, review_text):
         # Tokenize the review input
-        inputs = self.tokenizer(review_text, return_tensors='pt', truncation=True, padding=True, max_length=512)
+        inputs = self.tokenizer(review_text, return_tensors='pt', truncation=True, padding=True, max_length=self.max_length)
         inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
 
         # Model prediction
@@ -178,8 +180,10 @@ class ExplainerReviewApp(QWidget):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = ExplainerReviewApp(
-        model_dir='models/t5_fake_explainer',  # Path to your trained explainer model
-        product_info_file='data/product_info.csv'  # Path to your product info CSV
+        model_dir='models/bart_fake_explainer',  # Path to your trained explainer model
+        product_info_file='data/product_info.csv',  # Path to your product info CSV
+        max_length=512,  # Max length for tokenizer
+        # max_length=384,
     )
 
     # Set the overall window size larger (5x) and make it resizable

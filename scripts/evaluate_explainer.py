@@ -48,45 +48,13 @@ def parse_label(output_text):
 # ------------------------------
 # Evaluate explainer model
 # ------------------------------
-def evaluate_model(model_dir, test_file, max_rows=None, max_new_tokens=64):
+def evaluate_model(model_dir, test_file, max_rows=None, context_max_length=512, max_new_tokens=64):
     # Load dataset
-    examples = load_examples(test_file, max_rows)
+    examples = load_examples(test_file, max_rows=max_rows)
 
     # Load model
-    # tokenizer = AutoTokenizer.from_pretrained(model_dir)
-    # model = AutoModelForSeq2SeqLM.from_pretrained(model_dir)
-    lora_t5_flag = False  # mark loRA T5 model
-    model, tokenizer = None, None
-    if args.model_name in ["t5-base", "lora-t5", "t5-small", "lora-t5-small"]:
-        if args.model_name in ["lora-t5", "lora-t5-small"]:
-            if args.model_name == "lora-t5":
-                args.model_name = "t5-base"  # Use base model for loading
-            elif args.model_name == "lora-t5-small":
-                args.model_name = "t5-small"  # Use base model for loading
-            lora_t5_flag = True
-        from transformers import T5Tokenizer, T5ForConditionalGeneration
-        tokenizer = T5Tokenizer.from_pretrained(args.model_name)
-        model = T5ForConditionalGeneration.from_pretrained(args.model_name)
-    elif args.model_name in ["facebook/bart-large"]:
-        from transformers import BartTokenizer, BartForConditionalGeneration
-        tokenizer = BartTokenizer.from_pretrained(args.model_name)
-        model = BartForConditionalGeneration.from_pretrained(args.model_name)
-    else:
-        model, tokenizer = None, None
-    if model is None or tokenizer is None:
-        raise ValueError(f"Unsupported model_name: {args.model_name}")
-
-    if lora_t5_flag:
-        from peft import PeftModel, LoraConfig
-
-        model = PeftModel(
-            model=model,
-            peft_config=LoraConfig(
-                r=8,
-                lora_alpha=32,
-                lora_dropout=0.1,
-            ),
-        )
+    tokenizer = AutoTokenizer.from_pretrained(model_dir)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_dir)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
@@ -106,8 +74,9 @@ def evaluate_model(model_dir, test_file, max_rows=None, max_new_tokens=64):
         # Tokenize
         inputs = tokenizer(
             prompt,
-            max_length=512,
+            max_length=context_max_length,
             truncation=True,
+            padding="max_length",
             return_tensors="pt",
         ).to(device)
 
@@ -153,11 +122,13 @@ if __name__ == "__main__":
                         help="JSONL test file")
     parser.add_argument("--max_rows", type=int, default=None)
     parser.add_argument("--max_new_tokens", type=int, default=64)
+    parser.add_argument("--context_max_length", type=int, default=512)
     args = parser.parse_args()
 
     evaluate_model(
-        args.model_dir,
-        args.test_file,
-        args.max_rows,
-        args.max_new_tokens
+        model_dir=args.model_dir,
+        test_file=args.test_file,
+        max_rows=args.max_rows,
+        context_max_length=args.context_max_length,
+        max_new_tokens=args.max_new_tokens,
     )

@@ -10,7 +10,7 @@ from scripts.build_retriever import Retriever
 
 
 class FakeReviewApp(QWidget):
-    def __init__(self, model_dir, product_info_file):
+    def __init__(self, model_dir, product_info_file, max_length=512):
         super().__init__()
 
         # Load model and tokenizer
@@ -21,6 +21,8 @@ class FakeReviewApp(QWidget):
         # Load product data (this should come from your actual product data)
         self.product_data = self.load_product_data(product_info_file)
         self.product_names = self.product_data["product_name"].tolist()
+
+        self.max_length = max_length
 
         # Setup the GUI
         self.initUI()
@@ -116,7 +118,7 @@ class FakeReviewApp(QWidget):
 
     def predict_fake_review(self, review_text):
         # Tokenize the review input
-        inputs = self.tokenizer(review_text, return_tensors='pt', truncation=True, padding=True, max_length=512)
+        inputs = self.tokenizer(review_text, return_tensors='pt', truncation=True, padding=True, max_length=self.max_length)
         inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
 
         # Model prediction
@@ -136,7 +138,8 @@ if __name__ == '__main__':
     app = QApplication(sys.argv)
     ex = FakeReviewApp(
         model_dir='models/roberta_fake_classifier',  # Path to your trained model
-        product_info_file='data/product_info.csv'  # Path to your product info CSV
+        product_info_file='data/product_info.csv',  # Path to your product info CSV
+        max_length=512
     )
 
     # Set the overall window size larger (5x) and make it resizable

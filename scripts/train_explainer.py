@@ -124,6 +124,7 @@ if __name__ == "__main__":
     parser.add_argument("--output_dir", type=str, default="models/fake_explainer")
     parser.add_argument("--epochs", type=int, default=5)
     parser.add_argument("--max_rows", type=int, default=None)
+    parser.add_argument("--context_max_length", type=int, default=512)
     args = parser.parse_args()
 
     print(f"[INFO] loading data from {args.train_file}")
@@ -181,7 +182,7 @@ if __name__ == "__main__":
 
     # map preprocess
     dataset = dataset.map(
-        lambda batch: preprocess_fn(batch, tokenizer),
+        lambda batch: preprocess_fn(batch, tokenizer, max_input_len=args.context_max_length),
         batched=True,
         remove_columns=dataset["train"].column_names,
         keep_in_memory=False  # Avoid keeping data in memory to manage memory consumption
@@ -199,24 +200,27 @@ if __name__ == "__main__":
         per_device_eval_batch_size=batch_size,
         learning_rate=5e-5,
         num_train_epochs=args.epochs,
-        eval_strategy="epoch",
+        # eval_strategy="epoch",  # BUG: Hypervisor Error
+        eval_strategy="no",
+        # load_best_model_at_end=True,  # BUG: Hypervisor Error
+        load_best_model_at_end=False,  # default is False
         save_strategy="epoch",
         logging_strategy="epoch",
-        load_best_model_at_end=True,
         fp16=True,
         gradient_accumulation_steps=2,
         warmup_ratio=0.05,
         save_total_limit=1,  # Keep only the best model
         report_to="none",
+        # metric_for_best_model="accuracy",  # 新增此行，指定评估指标
     )
 
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=dataset["train"],
-        eval_dataset=dataset["test"],
+        # eval_dataset=dataset["test"],  # BUG: Hypervisor Error
         compute_metrics=compute_metrics,  # Add the metrics function here
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]  # Stop training if no improvement for 2 evals
+        # callbacks=[EarlyStoppingCallback(early_stopping_patience=3)]  # Stop training if no improvement for 2 evals  # BUG: Hypervisor Error
     )
 
     print("[INFO] Starting training...")

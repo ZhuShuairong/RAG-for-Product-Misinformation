@@ -39,14 +39,13 @@ python scripts/train_classifier.py --train_file data/reviews_with_labels_small_t
 python scripts/evaluate_classifier.py --model_dir models/roberta_fake_classifier --test_file data/reviews_with_labels_small_test.jsonl
 
 # 7.2 Explainer training and evaluation
-# 7.2.1
+# 7.2.1  # BUG: Hypervisor Error
 # python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name t5-base --output_dir models/t5_fake_explainer  --epoch 10
 # python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name lora-t5 --output_dir models/lora_t5_fake_explainer  --epoch 10
-# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name t5-small --output_dir models/t5_small_fake_explainer  --epoch 10
+python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name t5-small --output_dir models/t5_small_fake_explainer  --epoch 10  --max_rows=384
 # python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name facebook/bart-large --output_dir models/bart_large_fake_explainer  --epoch 10
-# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name facebook/bart-base --output_dir models/bart_fake_explainer  --epoch 10
-python scripts/evaluate_explainer.py --model_dir models/roberta_explainer --test_file
-
-
-
-
+python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name facebook/bart-base --output_dir models/bart_fake_explainer  --epoch 10  --context_max_length=384
+python scripts/evaluate_explainer.py --model_dir models/bart_fake_explainer --test_file --context_max_length=384
+# 7.2.2
+python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name facebook/bart-base --output_dir models/bart_fake_explainer  --epoch 5
+python scripts/evaluate_explainer.py --model_dir models/bart_fake_explainer --test_file data/reviews_with_labels_small_test.jsonl
