@@ -165,7 +165,7 @@ def decide_final_label(fact_label, fake_score, j, fake_threshold=2):
     """决策最终的伪标签（真实 vs 虚假）"""
     ctx = j.get("context", "") or ""
     meta = j.get("meta", {}) or {}
-    base_label = j.get("pseudo_label", None)
+    # base_label = j.get("pseudo_label", None)
 
     # 提取评分
     rating = safe_float(meta.get("rating"), None)
@@ -175,7 +175,8 @@ def decide_final_label(fact_label, fake_score, j, fake_threshold=2):
         return "fake"
 
     # 启发式假评论检测
-    if fake_score > fake_threshold or base_label == "fake":
+    # if fake_score > fake_threshold or base_label == "fake":  # TODO: 是否考虑 base_label？ 如果不考虑，则就是重新打标签
+    if fake_score > fake_threshold:
         return "fake"
 
     # 判断是否标记为真实
@@ -288,7 +289,6 @@ if __name__ == "__main__":
         for line in pbar:
             j = json.loads(line)
             context_text = j.get("context", "")
-            base_label = j.get("pseudo_label", None)
 
             # RAG 事实一致性检测
             retrieved = retriever.retrieve(context_text, top_k=args.top_k)

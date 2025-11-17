@@ -25,8 +25,11 @@ python scripts/generate_synthetic_fakes.py --in_file data/reviews_with_labels.js
 # 6.2.2
 python scripts/create_small_dataset.py --input_file data/reviews_with_labels.jsonl --output_file data/reviews_with_labels_real2_fake1.jsonl --ratio_real_to_fake 2.0
 python scripts/generate_synthetic_fakes.py --in_file data/reviews_with_labels_real2_fake1.jsonl --out_fake_file data/reviews_ollama_context_fake.jsonl --out_train_file data/reviews_ollama_context.jsonl --model llama3.2:3b --ollama_ratio 0.5 --online_troll_behavior
+# 6.2.2.1 Re-label the dataset with pseudo labels
 python scripts/generate_pseudo_labels.py --in_file data/reviews_ollama_context.jsonl --out_file data/reviews_ollama_context_labeled.jsonl --top_k 3
-python scripts/create_small_dataset.py --input_file data/reviews_ollama_context_labeled.jsonl --output_file data/reviews_with_labels_small_train.jsonl --ratio_real_to_fake 1.0 --split --test_ratio 0.1
+python scripts/create_small_dataset.py --input_file data/reviews_ollama_context_labeled.jsonl --output_file data/reviews_ollama_with_labels_small.jsonl --ratio_real_to_fake 1.0 --split --test_ratio 0.1
+# 6.2.2.2 No re-labeling
+python scripts/create_small_dataset.py --input_file data/reviews_ollama_context.jsonl --output_file data/reviews_ollama_small.jsonl --ratio_real_to_fake 1.0 --split --test_ratio 0.1
 
 # 7 Train and evaluate classifiers
 # 7.1 Classifier training and evaluation
@@ -40,17 +43,22 @@ python scripts/evaluate_classifier.py --model_dir models/roberta_fake_classifier
 python scripts/train_classifier.py --train_file data/reviews_with_labels_small_train.jsonl --model_name roberta-base --output_dir models/roberta_fake_classifier --epoch 10
 python scripts/evaluate_classifier.py --model_dir models/roberta_fake_classifier --test_file data/reviews_with_labels_small_test.jsonl
 # 7.1.4
-python scripts/train_classifier.py --train_file data/reviews_ollama_context_labeled_train.jsonl --model_name roberta-base --output_dir models/roberta_fake_ollama_classifier --epoch 10
-python scripts/evaluate_classifier.py --model_dir models/roberta_fake_ollama_classifier --test_file data/reviews_ollama_context_labeled_test.jsonl
+python scripts/train_classifier.py --train_file data/reviews_ollama_with_labels_small_train.jsonl --model_name roberta-base --output_dir models/roberta_fake_ollama_labeled_classifier --epoch 10
+python scripts/evaluate_classifier.py --model_dir models/roberta_fake_ollama_labeled_classifier --test_file data/reviews_ollama_with_labels_small_test.jsonl
+python scripts/evaluate_classifier.py --model_dir models/roberta_fake_ollama_labeled_classifier --test_file data/reviews_with_labels_small_test.jsonl
+# 7.1.5
+python scripts/train_classifier.py --train_file data/reviews_ollama_small_train.jsonl --model_name roberta-base --output_dir models/roberta_fake_ollama_classifier --epoch 10
+python scripts/evaluate_classifier.py --model_dir models/roberta_fake_ollama_classifier --test_file data/reviews_ollama_small_test.jsonl
+python scripts/evaluate_classifier.py --model_dir models/roberta_fake_ollama_classifier --test_file data/reviews_with_labels_small_test.jsonl
 
 # 7.2 Explainer training and evaluation
 # 7.2.1  # BUG: Hypervisor Error
-# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name t5-base --output_dir models/t5_fake_explainer  --epoch 10
-# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name lora-t5 --output_dir models/lora_t5_fake_explainer  --epoch 10
-python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name t5-small --output_dir models/t5_small_fake_explainer  --epoch 10  --max_rows=384
-# python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name facebook/bart-large --output_dir models/bart_large_fake_explainer  --epoch 10
-python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name facebook/bart-base --output_dir models/bart_fake_explainer  --epoch 10  --context_max_length=384
+# python scripts/train_explainer.py --train_file data/reviews_ollama_with_labels_small.jsonl --model_name t5-base --output_dir models/t5_fake_explainer  --epoch 10
+# python scripts/train_explainer.py --train_file data/reviews_ollama_with_labels_small.jsonl --model_name lora-t5 --output_dir models/lora_t5_fake_explainer  --epoch 10
+python scripts/train_explainer.py --train_file data/reviews_ollama_with_labels_small.jsonl --model_name t5-small --output_dir models/t5_small_fake_explainer  --epoch 10  --max_rows=384
+# python scripts/train_explainer.py --train_file data/reviews_ollama_with_labels_small.jsonl --model_name facebook/bart-large --output_dir models/bart_large_fake_explainer  --epoch 10
+python scripts/train_explainer.py --train_file data/reviews_ollama_with_labels_small.jsonl --model_name facebook/bart-base --output_dir models/bart_fake_explainer  --epoch 10  --context_max_length=384
 python scripts/evaluate_explainer.py --model_dir models/bart_fake_explainer --test_file --context_max_length=384
 # 7.2.2
-python scripts/train_explainer.py --train_file data/reviews_with_labels_small_train.jsonl --model_name facebook/bart-base --output_dir models/bart_fake_explainer  --epoch 5
+python scripts/train_explainer.py --train_file data/reviews_ollama_with_labels_small.jsonl --model_name facebook/bart-base --output_dir models/bart_fake_explainer  --epoch 5
 python scripts/evaluate_explainer.py --model_dir models/bart_fake_explainer --test_file data/reviews_with_labels_small_test.jsonl
