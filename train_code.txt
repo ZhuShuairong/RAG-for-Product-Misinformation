@@ -9,7 +9,7 @@ python scripts/download_sephora.py --dataset nadyinky/sephora-products-and-skinc
 python scripts/prepare_context.py --input_dir data --out_file data/reviews_context.jsonl
 
 # 4 Insert product information into vector database
-python scripts/insert_products.py --products_csv data/product_info.csv --persist_dir chroma_db --batch_size 256
+python scripts/insert_products.py --products_csv data/product_info.csv --persist_dir chroma_db --batch_size 256 --model_name all-MiniLM-L6-v2
 
 # 5 Generate pseudo labels for reviews
 python scripts/generate_pseudo_labels.py --in_file data/reviews_context.jsonl --out_file data/reviews_with_labels.jsonl --top_k 3
