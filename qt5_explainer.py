@@ -131,7 +131,7 @@ class ExplainerReviewApp(QWidget):
         self.reason_label.setText(f"Reason: {reason}")
 
         # Set color for result text based on fake or real
-        if label == "Real Review":
+        if label in ["Real Review", "Useful Review"]:
             self.result_label.setStyleSheet("color: green;")  # Green for real
         else:
             self.result_label.setStyleSheet("color: red;")  # Red for fake

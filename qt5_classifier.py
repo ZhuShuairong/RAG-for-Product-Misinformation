@@ -111,7 +111,7 @@ class FakeReviewApp(QWidget):
         self.result_label.setText(f"Result: {result}")
 
         # Set color for result text based on fake or real
-        if result == "Real Review":
+        if result in ["Real Review", "Useful Review"]:
             self.result_label.setStyleSheet("color: green;")  # Green for real
         else:
             self.result_label.setStyleSheet("color: red;")  # Red for fake
