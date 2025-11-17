@@ -116,8 +116,16 @@ class ExplainerReviewApp(QWidget):
         # Process the review with the model
         label, reason = self.predict_fake_review_with_explainer(context)
 
+        if label == "Fake":
+            # label_text = "Fake Review"
+            label_text = "Useless Review"
+        else:
+            # label_text = "Real Review"
+            label_text = "Useful Review"
+
         # Display the result
-        self.result_label.setText(f"Label: {label}")
+        # self.result_label.setText(f"Label: {label}")
+        self.result_label.setText(f"Label: {label_text}")
 
         # Display the explanation
         self.reason_label.setText(f"Reason: {reason}")

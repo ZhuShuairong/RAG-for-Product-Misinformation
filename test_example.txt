@@ -1,5 +1,5 @@
 Context: Review text: Great Product.It’s light weight,keeps your skin hydrated for long and i feel like my skin is getting better in terms of pore size.It didn’t cause any acne so that’s a huge bonus.It’s great! Size of 25 ml will last you almost a month. | Rating: 5 | Recommended: 1.0 | Product summary: The True Cream Aqua Bomb by belif. Highlights: nan.
-Pseudo Label: fake
+Pseudo Label: fake (useless)
 Review title:
 Review text: Great Product.It’s light weight,keeps your skin hydrated for long and i feel like my skin is getting better in terms of pore size.It didn’t cause any acne so that’s a huge bonus.It’s great! Size of 25 ml will last you almost a month.
 Product Name: The True Cream Aqua Bomb
@@ -8,7 +8,7 @@ Recommended: 1.0
 ---
 
 Context: Review title: LOVE | Review text: LOVE the facial cleanser and moisturizer. they leave my face very fresh and clean and never oily! | Rating: 5 | Recommended: 1.0 | Product summary: Vegan Milk Cleanser by MILK MAKEUP. Highlights: ['Clean at Sephora', 'Good for: Dryness', 'Vegan'].
-Pseudo Label: real
+Pseudo Label: real (useful)
 Review title: LOVE
 Review text: LOVE the facial cleanser and moisturizer. they leave my face very fresh and clean and never oily!
 Product Name: Vegan Milk Cleanser
@@ -17,7 +17,7 @@ Recommended: 1.0
 ---
 
 Context: Review title: Love it! | Review text: I have very sensitive and dry skin. This product does not irritate and leaves my skin clean but moisturized. It does not leave a greasy residue. There is a very light citrus scent which also does not offend my sensitive nose. This product has great ingredients for my skin. Highly recommend! | Rating: 5 | Product summary: Argan Cleansing Oil by Josie Maran. Highlights: ['Cruelty-Free', 'Vegan', 'Clean at Sephora'].
-Pseudo Label: real
+Pseudo Label: real (useful)
 Review title: Love it!
 Review text: I have very sensitive and dry skin. This product does not irritate and leaves my skin clean but moisturized. It does not leave a greasy residue. There is a very light citrus scent which also does not offend my sensitive nose. This product has great ingredients for my skin. Highly recommend!
 Product Name: Argan Cleansing Oil
@@ -26,7 +26,7 @@ Recommended: 0.0
 ---
 
 Context: Review text: This stuff is terrible. Even when used alone it pills SO BAD. After a couple hours I can rub my face and it flakes off. Even worse when I tried to put moisturizer over it, balls up right off my skin, even after letting it soak in for several minutes first. It just doesn’t soak in at all. I don’t understand all these raging reviews.. I have oily skin and it’s just not a good product for me. | Rating: 2 | Recommended: 0.0 | Product summary: Niacinamide 10% + Zinc 1% Oil Control Serum by The Ordinary. Highlights: ['Vegan', 'Community Favorite', 'Oil Free', 'Without Silicones', 'Niacinamide'].
-Pseudo Label: fake
+Pseudo Label: fake (useless)
 Review title:
 Review text: This stuff is terrible. Even when used alone it pills SO BAD. After a couple hours I can rub my face and it flakes off. Even worse when I tried to put moisturizer over it, balls up right off my skin, even after letting it soak in for several minutes first. It just doesn’t soak in at all. I don’t understand all these raging reviews.. I have oily skin and it’s just not a good product for me.
 Product Name: Niacinamide 10% + Zinc 1% Oil Control Serum
@@ -35,7 +35,7 @@ Recommended: 0.0
 ---
 
 Context: Review title: not bad! | Review text: smells really nice! feels a bit sticky/tight once it dries on the face though | Rating: 4 | Recommended: 1.0 | Product summary: Banana Bright 15% Vitamin C Serum by OLEHENRIKSEN. Highlights: ['Vegan', 'Hyaluronic Acid', 'Good for: Dullness/Uneven Texture', 'Good for: Loss of firmness', 'Vitamin C', 'Clean at Sephora', 'Without Parabens', 'Cruelty-Free'].
-Pseudo Label: real
+Pseudo Label: real (useful)
 Review title: not bad!
 Review text: smells really nice! feels a bit sticky/tight once it dries on the face though
 Product Name: Banana Bright 15% Vitamin C Serum
@@ -44,7 +44,7 @@ Recommended: 1.0
 ---
 
 Context: Review title: works so well! | Review text: I got this as a sample product and it works miracles for my under eye badges and dark circles! | Rating: 5 | Recommended: 1.0 | Product summary: Vitamin Enriched Eye Base by Bobbi Brown. Highlights: ['Hydrating', 'Plumping', 'Good for: Dark Circles', 'Vitamin C', 'Hyaluronic Acid', 'Community Favorite'].
-Pseudo Label: real
+Pseudo Label: real (useful)
 Review title: works so well!
 Review text: I got this as a sample product and it works miracles for my under eye badges and dark circles!
 Product Name: Vitamin Enriched Eye Base
@@ -53,7 +53,7 @@ Recommended: 1.0
 ---
 
 Context: Review title: I’m going to have to buy the full size. | Review text: I received this in a Sephora Play box and the small sample lasted for a long while. It smells so good and my skin SO SOFT! I’ve been trying to tell myself it didn’t make a huge difference but I’ve been without it for about a month and I can see the difference in my skin. It is just not as soft smooth and supple as it was while using this product. I’m going to have to buy the full size or the kit that has the 1 oz jar and the eye balm. | Rating: 5 | Recommended: 1.0 | Product summary: POWER Recharging Night Pressed Serum by Algenist. Highlights: nan.
-Pseudo Label: fake
+Pseudo Label: fake (useless)
 Review title: I’m going to have to buy the full size.
 Review text: I received this in a Sephora Play box and the small sample lasted for a long while. It smells so good and my skin SO SOFT! I’ve been trying to tell myself it didn’t make a huge difference but I’ve been without it for about a month and I can see the difference in my skin. It is just not as soft smooth and supple as it was while using this product. I’m going to have to buy the full size or the kit that has the 1 oz jar and the eye balm.
 Product Name: POWER Recharging Night Pressed Serum

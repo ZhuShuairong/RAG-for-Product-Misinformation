@@ -129,9 +129,11 @@ class FakeReviewApp(QWidget):
 
         # Combine the prediction with factual consistency check
         if prediction == 1:
-            return "Real Review"
+            # return "Real Review"
+            return "Useful Review"
         else:
-            return "Fake Review"
+            # return "Fake Review"
+            return "Useless Review"
 
 
 if __name__ == '__main__':
