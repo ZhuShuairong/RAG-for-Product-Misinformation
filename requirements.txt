@@ -12,3 +12,4 @@ accelerate
 pyqt5
 sentencepiece
 peft
+tf-keras
