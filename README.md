@@ -184,4 +184,4 @@ This project uses the following models:
 
 # License
 
-This project is only open to the public; others may use it for research and educational purposes only. Please cite the project if you use it in your work.
+This project is only open to a select group of people; others may only use it for research and educational purposes. If you use this project in your work, please credit the source.
